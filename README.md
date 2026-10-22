@@ -44,7 +44,6 @@ Le projet utilise **Expo SDK 52+** et **React Native**.
 ```bash
 npx expo start
 ```
-- Appuyez sur **`w`** pour ouvrir dans le navigateur Web.
 - Scannez le QR Code avec l'application **Expo Go** sur votre téléphone iOS ou Android.
 - Appuyez sur **`a`** pour lancer sur un émulateur Android ou **`i`** pour simulateur iOS.
 
