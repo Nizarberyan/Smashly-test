@@ -39,14 +39,8 @@ Ce projet est la reproduction fidèle et interactive en **React Native / Expo** 
 
 Le projet utilise **Expo SDK 52+** et **React Native**.
 
-### 1. Démarrer en mode Web (navigateur)
-```bash
-npm run web
-# ou avec bun
-bun run web
-```
 
-### 2. Démarrer avec Expo CLI (iOS / Android / Web)
+### 1. Démarrer avec Expo CLI (iOS / Android / Web)
 ```bash
 npx expo start
 ```
@@ -54,7 +48,7 @@ npx expo start
 - Scannez le QR Code avec l'application **Expo Go** sur votre téléphone iOS ou Android.
 - Appuyez sur **`a`** pour lancer sur un émulateur Android ou **`i`** pour simulateur iOS.
 
-### 3. Vérification des types
+### 2. Vérification des types
 ```bash
 npx tsc --noEmit
 ```
