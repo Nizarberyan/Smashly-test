@@ -43,6 +43,7 @@ interface WelcomeScreenProps {
   onOpenNetwork?: () => void;
   onOpenCourts?: () => void;
   onOpenProfile?: () => void;
+  showBottomNav?: boolean;
 }
 
 export const WelcomeScreen: React.FC<WelcomeScreenProps> = ({
@@ -53,6 +54,7 @@ export const WelcomeScreen: React.FC<WelcomeScreenProps> = ({
   onOpenNetwork,
   onOpenCourts,
   onOpenProfile,
+  showBottomNav = false,
 }) => {
   const insets = useSafeAreaInsets();
   const [chatMode, setChatMode] = useState<'matching' | 'assistant'>('matching');
@@ -597,69 +599,73 @@ export const WelcomeScreen: React.FC<WelcomeScreenProps> = ({
           {/* Spacer */}
           <View style={{ flex: 1 }} />
 
-          {/* Bottom Floating Navigation Bar */}
-          <View style={styles.bottomNavContainer}>
-            <View style={styles.bottomNavBar}>
-              {/* 1. Network / Community */}
-              <TouchableOpacity
-                activeOpacity={0.7}
-                style={styles.navButton}
-                onPress={onOpenNetwork}
-              >
-                <Users2 size={24} color="#e2e8f0" strokeWidth={2} />
-              </TouchableOpacity>
-
-              {/* 2. Map */}
-              <TouchableOpacity
-                activeOpacity={0.7}
-                style={styles.navButton}
-                onPress={onOpenMap}
-              >
-                <Map size={24} color="#e2e8f0" strokeWidth={2} />
-              </TouchableOpacity>
-
-              {/* 3. Center Gradient + Button */}
-              <TouchableOpacity
-                activeOpacity={0.85}
-                style={styles.plusButtonContainer}
-                onPress={onQuickAction}
-              >
-                <LinearGradient
-                  colors={[colors.blue500, colors.yellow400]}
-                  locations={[0.15, 0.85]}
-                  start={{ x: 0, y: 0 }}
-                  end={{ x: 0, y: 1 }}
-                  style={styles.plusGradient}
+          {/* Bottom Floating Navigation Bar or Spacer for persistent navbar */}
+          {showBottomNav ? (
+            <View style={styles.bottomNavContainer}>
+              <View style={styles.bottomNavBar}>
+                {/* 1. Network / Community */}
+                <TouchableOpacity
+                  activeOpacity={0.7}
+                  style={styles.navButton}
+                  onPress={onOpenNetwork}
                 >
-                  <Plus size={24} color="#0f172a" strokeWidth={2.8} />
-                </LinearGradient>
-              </TouchableOpacity>
+                  <Users2 size={24} color="#e2e8f0" strokeWidth={2} />
+                </TouchableOpacity>
 
-              {/* 4. Padel Court Icon */}
-              <TouchableOpacity
-                activeOpacity={0.7}
-                style={styles.navButton}
-                onPress={onOpenCourts}
-              >
-                <PadelCourtIcon size={25} color="#e2e8f0" strokeWidth={2} />
-              </TouchableOpacity>
+                {/* 2. Map */}
+                <TouchableOpacity
+                  activeOpacity={0.7}
+                  style={styles.navButton}
+                  onPress={onOpenMap}
+                >
+                  <Map size={24} color="#e2e8f0" strokeWidth={2} />
+                </TouchableOpacity>
 
-              {/* 5. User Profile Logo / Avatar */}
-              <TouchableOpacity
-                activeOpacity={0.7}
-                style={styles.profileButton}
-                onPress={onOpenProfile}
-              >
-                <View style={styles.avatarBorder}>
-                  <Image
-                    source={require('../../images/avatar-julien.png')}
-                    style={styles.avatarImage}
-                    resizeMode="cover"
-                  />
-                </View>
-              </TouchableOpacity>
+                {/* 3. Center Gradient + Button */}
+                <TouchableOpacity
+                  activeOpacity={0.85}
+                  style={styles.plusButtonContainer}
+                  onPress={onQuickAction}
+                >
+                  <LinearGradient
+                    colors={[colors.blue500, colors.yellow400]}
+                    locations={[0.15, 0.85]}
+                    start={{ x: 0, y: 0 }}
+                    end={{ x: 1, y: 1 }}
+                    style={styles.plusGradient}
+                  >
+                    <Plus size={24} color="#0f172a" strokeWidth={2.8} />
+                  </LinearGradient>
+                </TouchableOpacity>
+
+                {/* 4. Padel Court Icon */}
+                <TouchableOpacity
+                  activeOpacity={0.7}
+                  style={styles.navButton}
+                  onPress={onOpenCourts}
+                >
+                  <PadelCourtIcon size={25} color="#e2e8f0" strokeWidth={2} />
+                </TouchableOpacity>
+
+                {/* 5. User Profile Logo / Avatar */}
+                <TouchableOpacity
+                  activeOpacity={0.7}
+                  style={styles.profileButton}
+                  onPress={onOpenProfile}
+                >
+                  <View style={styles.avatarBorder}>
+                    <Image
+                      source={require('../../images/avatar-julien.png')}
+                      style={styles.avatarImage}
+                      resizeMode="cover"
+                    />
+                  </View>
+                </TouchableOpacity>
+              </View>
             </View>
-          </View>
+          ) : (
+            <View style={{ height: Math.max(insets.bottom, 14) + 65 }} />
+          )}
         </View>
       </ImageBackground>
     </View>

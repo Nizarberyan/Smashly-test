@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState, useRef } from 'react';
 import {
   View,
   Text,
@@ -8,9 +8,16 @@ import {
   ScrollView,
   Dimensions,
   Image,
+  Share,
+  Platform,
+  ToastAndroid,
+  Animated,
+  Pressable,
+  Alert,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useSwipeable } from './SwipeableTabScreen';
 import {
   CalendarDays,
   Plus,
@@ -24,6 +31,7 @@ import {
   LogOut,
   Calendar,
   CalendarPlus,
+  ChevronDown,
 } from 'lucide-react-native';
 
 import { colors } from '../theme/colors';
@@ -34,6 +42,7 @@ interface OpenMatchesModalProps {
   onClose: () => void;
   onOpenMatchDetail: () => void;
   onOpenFilters: () => void;
+  isScreen?: boolean;
 }
 
 export const OpenMatchesModal: React.FC<OpenMatchesModalProps> = ({
@@ -41,25 +50,95 @@ export const OpenMatchesModal: React.FC<OpenMatchesModalProps> = ({
   onClose,
   onOpenMatchDetail,
   onOpenFilters,
+  isScreen = false,
 }) => {
   const insets = useSafeAreaInsets();
+  const { panHandlers } = useSwipeable();
+  const [isLiked, setIsLiked] = useState(false);
+  const likeScaleAnim = useRef(new Animated.Value(1)).current;
+  const [toastMessage, setToastMessage] = useState<string | null>(null);
+  const toastAnim = useRef(new Animated.Value(0)).current;
 
-  return (
-    <Modal
-      visible={visible}
-      animationType="slide"
-      transparent={false}
-      onRequestClose={onClose}
-    >
-      <View style={[styles.container, { paddingTop: insets.top }]}>
-        {/* Header */}
-        <View style={styles.header}>
-          <View style={styles.headerTitleRow}>
-            <View style={styles.headerIconBox}>
-              <CalendarDays size={20} color="#ffffff" strokeWidth={2} />
-            </View>
-            <Text style={styles.headerTitle}>Parties ouvertes</Text>
+  const showToast = (message: string) => {
+    if (Platform.OS === 'android') {
+      ToastAndroid.show(message, ToastAndroid.SHORT);
+    }
+    setToastMessage(message);
+    toastAnim.setValue(0);
+    Animated.sequence([
+      Animated.timing(toastAnim, {
+        toValue: 1,
+        duration: 180,
+        useNativeDriver: true,
+      }),
+      Animated.delay(1800),
+      Animated.timing(toastAnim, {
+        toValue: 0,
+        duration: 200,
+        useNativeDriver: true,
+      }),
+    ]).start(() => {
+      setToastMessage(null);
+    });
+  };
+
+  const handleLike = (e?: any) => {
+    e?.stopPropagation?.();
+    setIsLiked((prev) => {
+      const next = !prev;
+      if (next) {
+        Animated.sequence([
+          Animated.spring(likeScaleAnim, {
+            toValue: 1.35,
+            friction: 3,
+            tension: 100,
+            useNativeDriver: true,
+          }),
+          Animated.spring(likeScaleAnim, {
+            toValue: 1,
+            friction: 4,
+            tension: 80,
+            useNativeDriver: true,
+          }),
+        ]).start();
+      }
+      return next;
+    });
+  };
+
+  const handleComment = (e?: any) => {
+    e?.stopPropagation?.();
+    showToast('Coming later');
+  };
+
+  const handleShare = async (e?: any) => {
+    e?.stopPropagation?.();
+    try {
+      await Share.share(
+        {
+          title: 'Partie de Padel Smashly 🎾',
+          message:
+            '🎾 Rejoins ma partie de Padel sur Smashly !\n📍 Avt Association Venelloise\n📅 Jeu. 22 Oct. · 16:30 | Niveau 8 (Compétitif)\n🔥 Il ne reste qu’une place disponible !\n👉 https://smashly.app/match/venelles-8',
+        },
+        {
+          dialogTitle: 'Partager cette partie de padel',
+        }
+      );
+    } catch (err) {
+      console.log('Share error:', err);
+    }
+  };
+
+  const content = (
+    <View style={[styles.container, { paddingTop: isScreen ? 4 : insets.top }]}>
+      {/* Header (Swipeable down) */}
+      <View style={styles.header} {...panHandlers}>
+        <View style={styles.headerTitleRow}>
+          <View style={styles.headerIconBox}>
+            <CalendarDays size={20} color="#ffffff" strokeWidth={2} />
           </View>
+          <Text style={styles.headerTitle}>Parties ouvertes</Text>
+        </View>
 
           <View style={styles.headerRightActions}>
             <TouchableOpacity
@@ -122,8 +201,12 @@ export const OpenMatchesModal: React.FC<OpenMatchesModalProps> = ({
         {/* Matches List Content */}
         <ScrollView
           style={styles.matchesScroll}
-          contentContainerStyle={{ padding: 16, paddingBottom: insets.bottom + 20 }}
+          contentContainerStyle={{
+            padding: 16,
+            paddingBottom: insets.bottom + (isScreen ? 95 : 20),
+          }}
           showsVerticalScrollIndicator={false}
+          removeClippedSubviews={Platform.OS === 'android'}
         >
           {/* Match Card with Dual-Color Gradient Border */}
           <TouchableOpacity
@@ -268,43 +351,144 @@ export const OpenMatchesModal: React.FC<OpenMatchesModalProps> = ({
 
                 {/* Pronostics section */}
                 <View style={styles.pronosticsRow}>
-                  <Text style={styles.pronosticsText}>🎯 Pronostics  ▼</Text>
+                  <Text style={styles.pronosticsText}>🎯 Pronostics</Text>
+                  <ChevronDown size={14} color="#94a3b8" strokeWidth={2.4} style={{ marginLeft: 6 }} />
                 </View>
 
-                {/* Social interaction icons */}
-                <View style={styles.socialRow}>
-                  <TouchableOpacity style={styles.socialBtn}>
-                    <Heart size={22} color="#94a3b8" />
+                {/* Social interaction box: stops propagation so it never navigates to match details */}
+                <Pressable
+                  style={styles.socialRow}
+                  onPress={(e) => {
+                    e.stopPropagation();
+                  }}
+                >
+                  {/* Like button: turns red with spring animation */}
+                  <TouchableOpacity
+                    activeOpacity={0.7}
+                    style={styles.socialBtn}
+                    onPress={handleLike}
+                    hitSlop={{ top: 12, bottom: 12, left: 16, right: 16 }}
+                  >
+                    <Animated.View style={{ transform: [{ scale: likeScaleAnim }] }}>
+                      <Heart
+                        size={22}
+                        color={isLiked ? '#ef4444' : '#94a3b8'}
+                        fill={isLiked ? '#ef4444' : 'none'}
+                      />
+                    </Animated.View>
                   </TouchableOpacity>
-                  <TouchableOpacity style={styles.socialBtn}>
+
+                  {/* Comment button: displays toast "Coming later" */}
+                  <TouchableOpacity
+                    activeOpacity={0.7}
+                    style={styles.socialBtn}
+                    onPress={handleComment}
+                    hitSlop={{ top: 12, bottom: 12, left: 16, right: 16 }}
+                  >
                     <MessageSquare size={22} color="#94a3b8" />
                   </TouchableOpacity>
-                  <TouchableOpacity style={styles.socialBtn}>
+
+                  {/* Share button: opens Android Share Sheet with pre-made post */}
+                  <TouchableOpacity
+                    activeOpacity={0.7}
+                    style={styles.socialBtn}
+                    onPress={handleShare}
+                    hitSlop={{ top: 12, bottom: 12, left: 16, right: 16 }}
+                  >
                     <Send size={22} color="#94a3b8" />
                   </TouchableOpacity>
-                </View>
+                </Pressable>
 
                 {/* Bottom Actions Row: Quitter la partie */}
-                <View style={styles.cardBottomRow}>
-                  <TouchableOpacity style={styles.leaveGameBtn}>
+                <Pressable
+                  style={styles.cardBottomRow}
+                  onPress={(e) => {
+                    e.stopPropagation();
+                  }}
+                >
+                  <TouchableOpacity
+                    style={styles.leaveGameBtn}
+                    onPress={(e) => {
+                      e.stopPropagation();
+                      Alert.alert(
+                        'Quitter la partie',
+                        'Voulez-vous vraiment vous désinscrire de cette partie ?',
+                        [
+                          { text: 'Non', style: 'cancel' },
+                          { text: 'Oui, quitter', style: 'destructive', onPress: () => showToast('Désinscription enregistrée') },
+                        ]
+                      );
+                    }}
+                  >
                     <LogOut size={17} color="#94a3b8" style={{ marginRight: 8 }} />
                     <Text style={styles.leaveGameText}>Quitter la partie</Text>
                   </TouchableOpacity>
 
                   <View style={styles.cardQuickIcons}>
-                    <TouchableOpacity style={styles.miniIconBox}>
+                    <TouchableOpacity
+                      style={styles.miniIconBox}
+                      onPress={(e) => {
+                        e.stopPropagation();
+                        showToast('Lieu : Avt Association Venelloise');
+                      }}
+                    >
                       <MapPin size={17} color="#94a3b8" />
                     </TouchableOpacity>
-                    <TouchableOpacity style={styles.miniIconBox}>
+                    <TouchableOpacity
+                      style={styles.miniIconBox}
+                      onPress={(e) => {
+                        e.stopPropagation();
+                        showToast('Ajouté au calendrier !');
+                      }}
+                    >
                       <CalendarPlus size={17} color="#10b981" />
                     </TouchableOpacity>
                   </View>
-                </View>
+                </Pressable>
               </View>
             </LinearGradient>
           </TouchableOpacity>
         </ScrollView>
+
+        {/* Visual Toast Notification Overlay */}
+        {toastMessage && (
+          <Animated.View
+            pointerEvents="none"
+            style={[
+              styles.toastContainer,
+              {
+                opacity: toastAnim,
+                transform: [
+                  {
+                    translateY: toastAnim.interpolate({
+                      inputRange: [0, 1],
+                      outputRange: [16, 0],
+                    }),
+                  },
+                ],
+              },
+            ]}
+          >
+            <View style={styles.toastBubble}>
+              <Text style={styles.toastText}>{toastMessage}</Text>
+            </View>
+          </Animated.View>
+        )}
       </View>
+  );
+
+  if (isScreen) {
+    return content;
+  }
+
+  return (
+    <Modal
+      visible={visible}
+      animationType="slide"
+      transparent={false}
+      onRequestClose={onClose}
+    >
+      {content}
     </Modal>
   );
 };
@@ -666,7 +850,37 @@ const styles = StyleSheet.create({
     borderBottomColor: '#1e293b',
   },
   socialBtn: {
-    padding: 2,
+    paddingVertical: 6,
+    paddingHorizontal: 22,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  toastContainer: {
+    position: 'absolute',
+    bottom: 35,
+    left: 0,
+    right: 0,
+    alignItems: 'center',
+    zIndex: 9999,
+  },
+  toastBubble: {
+    backgroundColor: '#0284c7',
+    paddingHorizontal: 20,
+    paddingVertical: 10,
+    borderRadius: 999,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.4,
+    shadowRadius: 10,
+    elevation: 8,
+    borderWidth: 1,
+    borderColor: '#38bdf8',
+  },
+  toastText: {
+    color: '#ffffff',
+    fontSize: 13,
+    fontWeight: '700',
+    letterSpacing: 0.2,
   },
   cardBottomRow: {
     flexDirection: 'row',
