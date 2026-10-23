@@ -132,39 +132,67 @@ Le sujet mentionnait 5 bonus facultatifs au choix : **l'intégralité des 5 bonu
 
 ---
 
-## 🚀 Lancement & Installation
+## 🚀 Lancement du Dev Build & Installation (How to Run Dev Build)
 
 ### 1. Installer les dépendances
 ```bash
 bun install
-# ou pnpm install / npm install
+# ou npm install / pnpm install
 ```
 
-### 2. Démarrer l'application
+### 2. Méthode A : Lancer directement le Dev Build Android (Recommandé)
+Cette commande compile nativement l'application, l'installe sur votre téléphone ou émulateur connecté, et lance le serveur Metro avec hot reload :
 ```bash
-bun run start
-# ou npx expo start
+npx expo run:android
 ```
-* Appuyez sur **`a`** pour lancer sur un téléphone ou émulateur Android connecté.
-* Appuyez sur **`w`** pour visualiser l'interface sur le Web.
-* Ou scannez le QR code avec l'application **Expo Go**.
 
-### 3. Lancer les tests unitaires
+### 3. Méthode B : Lancer le serveur Metro avec Dev Client
+Si l'application de développement est déjà installée sur votre appareil :
 ```bash
+npx expo start --dev-client
+# ou bun run start
+```
+* Appuyez sur **`a`** pour ouvrir sur Android.
+* Appuyez sur **`r`** pour recharger l'application à chaud.
+
+### 4. Méthode C : Installer directement l'APK Debug précompilé
+Le build debug natif est généré dans `android/app/build/outputs/apk/debug/app-debug.apk`.
+
+Pour l'installer sur votre téléphone connecté en USB via ADB :
+```bash
+# 1. Nettoyer les éventuelles versions précédentes
+adb uninstall com.anonymous.smashlykittest
+
+# 2. Installer l'APK Debug
+adb install -r android/app/build/outputs/apk/debug/app-debug.apk
+```
+> **Astuce si le streaming ADB est bloqué par le téléphone** :
+> ```bash
+> adb push android/app/build/outputs/apk/debug/app-debug.apk /sdcard/Download/smashly-debug.apk
+> ```
+> Puis ouvrez l'application **Fichiers / Téléchargements** sur votre téléphone et appuyez sur `smashly-debug.apk`.
+
+### 5. Méthode D : Aperçu Web instantané (Sans appareil mobile)
+Pour tester immédiatement l'ensemble des parcours et animations dans votre navigateur :
+```bash
+npx expo start --web
+```
+Ouvrez `http://localhost:8081` dans votre navigateur (Chrome/Firefox) et basculez en mode responsive mobile (`Ctrl+Shift+M` ou `Cmd+Shift+M`).
+
+### 6. Tests unitaires & Typage
+```bash
+# Exécuter les 8 tests unitaires de matchmaking
 bun test
 # ou npm test
-```
 
-### 4. Vérifier les types TypeScript
-```bash
+# Vérifier la validité stricte des types TypeScript
 npx tsc --noEmit
 ```
 
-### 5. Générer le build Android (APK Debug)
+### 7. Recompiler le build natif Android (si nécessaire)
 ```bash
-cd android && ./gradlew assembleDebug
+cd android && ./gradlew assembleDebug -PreactNativeArchitectures=arm64-v8a
 ```
-L'APK sera généré dans : `android/app/build/outputs/apk/debug/app-debug.apk`.
 
 ---
 
