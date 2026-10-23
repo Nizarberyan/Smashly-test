@@ -2,26 +2,6 @@
 
 Application mobile développée en **React Native / Expo** et **TypeScript** pour le test technique Smashly AI, réalisée à partir du kit d'assets, des captures de référence et des spécifications officielles du sujet de test (`document(1).pdf`).
 
----
-
-## 📲 Application Mobile (APK) — Téléchargement & Utilisation
-
-### Où trouver l'application (APK) ?
-Le package Android complet est directement inclus dans le dépôt :
-- **Fichier APK** : [`application-5b0cb789-534e-4ac8-bfc5-8586e4e21841.apk`](application-5b0cb789-534e-4ac8-bfc5-8586e4e21841.apk) (à la racine du dépôt)
-- **Compatibilité** : Android 8.0+ (API 24+), optimisé pour smartphones et tablettes Android avec icônes adaptatives et monochrome.
-
-### Comment installer et utiliser l'application sur son téléphone ?
-1. **Télécharger le fichier APK** ([`application-5b0cb789-534e-4ac8-bfc5-8586e4e21841.apk`](application-5b0cb789-534e-4ac8-bfc5-8586e4e21841.apk)) sur votre smartphone Android.
-2. **Ouvrir le fichier** depuis votre gestionnaire de fichiers ou notifications. Autorisez l'installation d'applications externes si le système Android vous le demande.
-3. **Lancer « Smashly AI »** :
-   - **Écran d'Accueil (Partie 1)** : Testez la permutation fluide en 3D du paquet de cartes (appuyez sur la carte en arrière-plan ou sur le bouton rond de bascule).
-   - **Parcours Matchs (Partie 2)** : Appuyez sur le raccourci **« Rejoins une partie »** ou sur l'onglet **Piste** pour tester le calcul automatique des niveaux avec Julien (Niveau 7) sur les 4 parties ouvertes (inscription directe, demande envoyée, complet, désinscription).
-   - **Mon Réseau** : Ouvrez l'onglet **Réseau** pour parcourir les joueurs avec leurs badges de niveau iconiques (Niv. I à VIII), consulter les coachs certifiés avec avis, ou appuyer sur l'icône `?` pour ouvrir le guide officiel des 8 niveaux.
-   - **Carte Interactive** : Ouvrez l'onglet **Carte** pour visualiser les clubs de padel sur la carte interactive sombre avec accélération GPU.
-
----
-
 ## 📱 Aperçu des Fonctionnalités Implémentées
 
 ### Partie 1 : Écran d'accueil mobile (~60% du temps)
@@ -155,31 +135,14 @@ npx expo start --dev-client
 * Appuyez sur **`a`** pour ouvrir sur Android.
 * Appuyez sur **`r`** pour recharger l'application à chaud.
 
-### 4. Méthode C : Installer directement l'APK Debug précompilé
-Le build debug natif est généré dans `android/app/build/outputs/apk/debug/app-debug.apk`.
-
-Pour l'installer sur votre téléphone connecté en USB via ADB :
-```bash
-# 1. Nettoyer les éventuelles versions précédentes
-adb uninstall com.anonymous.smashlykittest
-
-# 2. Installer l'APK Debug
-adb install -r android/app/build/outputs/apk/debug/app-debug.apk
-```
-> **Astuce si le streaming ADB est bloqué par le téléphone** :
-> ```bash
-> adb push android/app/build/outputs/apk/debug/app-debug.apk /sdcard/Download/smashly-debug.apk
-> ```
-> Puis ouvrez l'application **Fichiers / Téléchargements** sur votre téléphone et appuyez sur `smashly-debug.apk`.
-
-### 5. Méthode D : Aperçu Web instantané (Sans appareil mobile)
+### 4. Méthode C : Aperçu Web instantané (Sans appareil mobile)
 Pour tester immédiatement l'ensemble des parcours et animations dans votre navigateur :
 ```bash
 npx expo start --web
 ```
 Ouvrez `http://localhost:8081` dans votre navigateur (Chrome/Firefox) et basculez en mode responsive mobile (`Ctrl+Shift+M` ou `Cmd+Shift+M`).
 
-### 6. Tests unitaires & Typage
+### 5. Tests unitaires & Typage
 ```bash
 # Exécuter les 8 tests unitaires de matchmaking
 bun test
@@ -187,11 +150,6 @@ bun test
 
 # Vérifier la validité stricte des types TypeScript
 npx tsc --noEmit
-```
-
-### 7. Recompiler le build natif Android (si nécessaire)
-```bash
-cd android && ./gradlew assembleDebug -PreactNativeArchitectures=arm64-v8a
 ```
 
 ---
