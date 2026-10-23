@@ -4,6 +4,24 @@ Application mobile développée en **React Native / Expo** et **TypeScript** pou
 
 ---
 
+## 📲 Application Mobile (APK) — Téléchargement & Utilisation
+
+### Où trouver l'application (APK) ?
+Le package Android complet est directement inclus dans le dépôt :
+- **Fichier APK** : [`application-5b0cb789-534e-4ac8-bfc5-8586e4e21841.apk`](application-5b0cb789-534e-4ac8-bfc5-8586e4e21841.apk) (à la racine du dépôt)
+- **Compatibilité** : Android 8.0+ (API 24+), optimisé pour smartphones et tablettes Android avec icônes adaptatives et monochrome.
+
+### Comment installer et utiliser l'application sur son téléphone ?
+1. **Télécharger le fichier APK** ([`application-5b0cb789-534e-4ac8-bfc5-8586e4e21841.apk`](application-5b0cb789-534e-4ac8-bfc5-8586e4e21841.apk)) sur votre smartphone Android.
+2. **Ouvrir le fichier** depuis votre gestionnaire de fichiers ou notifications. Autorisez l'installation d'applications externes si le système Android vous le demande.
+3. **Lancer « Smashly AI »** :
+   - **Écran d'Accueil (Partie 1)** : Testez la permutation fluide en 3D du paquet de cartes (appuyez sur la carte en arrière-plan ou sur le bouton rond de bascule).
+   - **Parcours Matchs (Partie 2)** : Appuyez sur le raccourci **« Rejoins une partie »** ou sur l'onglet **Piste** pour tester le calcul automatique des niveaux avec Julien (Niveau 7) sur les 4 parties ouvertes (inscription directe, demande envoyée, complet, désinscription).
+   - **Mon Réseau** : Ouvrez l'onglet **Réseau** pour parcourir les joueurs avec leurs badges de niveau iconiques (Niv. I à VIII), consulter les coachs certifiés avec avis, ou appuyer sur l'icône `?` pour ouvrir le guide officiel des 8 niveaux.
+   - **Carte Interactive** : Ouvrez l'onglet **Carte** pour visualiser les clubs de padel sur la carte interactive sombre avec accélération GPU.
+
+---
+
 ## 📱 Aperçu des Fonctionnalités Implémentées
 
 ### Partie 1 : Écran d'accueil mobile (~60% du temps)

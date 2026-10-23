@@ -6,7 +6,7 @@
     "orientation": "portrait",
     "userInterfaceStyle": "dark",
     "icon": "./Icons/icon-512.png",
-    "newArchEnabled": true,
+    "newArchEnabled": false,
     "web": {
       "bundler": "metro"
     },
@@ -20,6 +20,11 @@
     },
     "ios": {
       "bundleIdentifier": "com.anonymous.smashlykittest"
+    },
+    "extra": {
+      "eas": {
+        "projectId": "303829f5-1104-435e-ba63-cc1a6b0ec218"
+      }
     }
   }
 }

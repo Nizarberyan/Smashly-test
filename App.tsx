@@ -261,9 +261,9 @@ function MainApp() {
         activeTab={activeTab}
         onSelectTab={navigateToTab}
         onQuickAction={handleQuickAction}
-        avatarUrl={currentUser.profile_picture_url}
-        userInitials={((currentUser.first_name?.[0] || 'J') + (currentUser.last_name?.[0] || 'D')).toUpperCase()}
-        isJulien={!currentUser.profile_picture_url && currentUser.first_name?.toLowerCase() === 'julien'}
+        avatarUrl={currentUser?.profile_picture_url}
+        userInitials={(((currentUser?.first_name?.[0] || 'J') + (currentUser?.last_name?.[0] || 'D'))).toUpperCase()}
+        isJulien={!currentUser?.profile_picture_url && currentUser?.first_name?.toLowerCase() === 'julien'}
       />
     </View>
   );
