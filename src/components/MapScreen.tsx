@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect, useMemo, memo } from 'react';
+import React, { useState, useRef, useEffect, useMemo, memo, useCallback } from 'react';
 import {
   View,
   Text,
@@ -8,6 +8,8 @@ import {
   Image,
   Linking,
   Platform,
+  TextInput,
+  ActivityIndicator,
   Alert,
 } from 'react-native';
 import { WebView, WebViewMessageEvent } from 'react-native-webview';
@@ -19,172 +21,174 @@ import {
   Navigation,
   ArrowLeft,
   Star,
-  Car,
+  Users2,
+  GraduationCap,
+  Search,
   ExternalLink,
-  Plus,
-  Minus,
-  LocateFixed,
-  CalendarDays,
-  Globe2,
-  Compass,
+  Phone,
+  RefreshCw,
+  Target,
+  Sparkles,
+  X,
 } from 'lucide-react-native';
 
+import {
+  apiFetchPublicMap,
+  apiFetchPublicClubs,
+  SmashlyPublicPlayer,
+  SmashlyPublicCoach,
+  SmashlyPublicClub,
+} from '../api/smashlyClient';
 import { colors } from '../theme/colors';
 
-export interface ClubItem {
-  id: string;
-  name: string;
-  city: string;
-  distance: string;
-  eta: string;
-  rating: number;
-  reviews: number;
-  matchesCount: number;
-  courtsCount: number;
-  address: string;
-  lat: number;
-  lng: number;
-  image: any;
-}
+type MapCategory = 'all' | 'players' | 'coaches' | 'clubs';
 
 interface MapScreenProps {
   onGoHome?: () => void;
   onOpenMatches?: () => void;
+  onBookCoach?: () => void;
 }
+
+let cachedMapData: {
+  players: SmashlyPublicPlayer[];
+  coaches: SmashlyPublicCoach[];
+  clubs: SmashlyPublicClub[];
+  timestamp: number;
+} | null = null;
+const MAP_CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
 
 export const MapScreen: React.FC<MapScreenProps> = memo(({
   onGoHome,
   onOpenMatches,
+  onBookCoach,
 }) => {
   const insets = useSafeAreaInsets();
   const { panHandlers } = useSwipeable();
-  const [mapType, setMapType] = useState<'plan' | 'satellite'>('plan');
-  // Zoom Level Preset: 0.4 (Région), 0.85 (Agglo), 1.4 (Focus)
-  const [zoomLevel, setZoomLevel] = useState<number>(0.85);
-  const [mapTouchActive, setMapTouchActive] = useState(false);
 
-  const clubs: ClubItem[] = useMemo(
-    () => [
-      {
-        id: '1',
-        name: 'Tennis Padel Club Venelles',
-        city: 'Venelles · Aix Nord',
-        distance: '4.2 km',
-        eta: '8 min',
-        rating: 4.9,
-        reviews: 142,
-        matchesCount: 2,
-        courtsCount: 6,
-        address: 'Chemin des Piboules, 13770 Venelles',
-        lat: 43.5931,
-        lng: 5.4811,
-        image: require('../../images/venelles-court.jpg'),
-      },
-      {
-        id: '2',
-        name: 'Country Club Aixois',
-        city: 'Aix-en-Provence · Centre',
-        distance: '8.1 km',
-        eta: '14 min',
-        rating: 4.8,
-        reviews: 98,
-        matchesCount: 1,
-        courtsCount: 4,
-        address: '1195 Chemin des Cruyes, 13090 Aix-en-Provence',
-        lat: 43.5297,
-        lng: 5.4474,
-        image: require('../../images/venelles-court.jpg'),
-      },
-      {
-        id: '3',
-        name: 'Mon Padel Plan de Campagne',
-        city: 'Bouc-Bel-Air / Les Pennes',
-        distance: '14 km',
-        eta: '18 min',
-        rating: 4.7,
-        reviews: 86,
-        matchesCount: 2,
-        courtsCount: 5,
-        address: 'Zone Commerciale Plan de Campagne, 13170',
-        lat: 43.4382,
-        lng: 5.3729,
-        image: require('../../images/venelles-court.jpg'),
-      },
-      {
-        id: '4',
-        name: 'Padel Club Marseille Luminy',
-        city: 'Marseille · Luminy / Sud',
-        distance: '24 km',
-        eta: '28 min',
-        rating: 4.9,
-        reviews: 215,
-        matchesCount: 3,
-        courtsCount: 8,
-        address: 'Parc Scientifique de Luminy, 13009 Marseille',
-        lat: 43.2325,
-        lng: 5.4389,
-        image: require('../../images/venelles-court.jpg'),
-      },
-      {
-        id: '5',
-        name: 'Padel Toulon Méditerranée',
-        city: 'Toulon / Hyères · Est',
-        distance: '68 km',
-        eta: '52 min',
-        rating: 4.8,
-        reviews: 110,
-        matchesCount: 1,
-        courtsCount: 6,
-        address: 'Rond-Point de la Mer, 83000 Toulon',
-        lat: 43.1242,
-        lng: 5.928,
-        image: require('../../images/venelles-court.jpg'),
-      },
-      {
-        id: '6',
-        name: 'Tennis Padel Grand Avignon',
-        city: 'Avignon · Nord-Ouest',
-        distance: '75 km',
-        eta: '55 min',
-        rating: 4.7,
-        reviews: 94,
-        matchesCount: 2,
-        courtsCount: 6,
-        address: 'Avenue de la Durance, 84000 Avignon',
-        lat: 43.9493,
-        lng: 4.8055,
-        image: require('../../images/venelles-court.jpg'),
-      },
-    ],
-    []
-  );
+  const webViewRef = useRef<any>(null);
+  const iframeRef = useRef<HTMLIFrameElement>(null);
 
-  const [selectedClub, setSelectedClub] = useState<ClubItem>(clubs[0]);
+  const [loading, setLoading] = useState(!cachedMapData);
+  const [players, setPlayers] = useState<SmashlyPublicPlayer[]>(cachedMapData?.players || []);
+  const [coaches, setCoaches] = useState<SmashlyPublicCoach[]>(cachedMapData?.coaches || []);
+  const [clubs, setClubs] = useState<SmashlyPublicClub[]>(cachedMapData?.clubs || []);
 
-  // Leaflet numeric zoom level:
-  // Région: 9, Agglo: 12, Focus: 15
-  const computedZoom = useMemo(() => {
-    if (zoomLevel <= 0.55) return 9;
-    if (zoomLevel <= 1.1) return 12;
-    return 15;
-  }, [zoomLevel]);
+  const [category, setCategory] = useState<MapCategory>('all');
+  const [searchQuery, setSearchQuery] = useState('');
+  const [selectedItem, setSelectedItem] = useState<{
+    type: 'player' | 'coach' | 'club';
+    data: any;
+  } | null>(null);
 
-  const webViewRef = useRef<WebView>(null);
-  const iframeRef = useRef<any>(null);
+  // Fetch real map data from Smashly AI backend with smart cache
+  const loadMapData = useCallback(async (forceRefresh = false) => {
+    const isFresh = cachedMapData && Date.now() - cachedMapData.timestamp < MAP_CACHE_TTL_MS;
+    if (isFresh && !forceRefresh) {
+      setPlayers(cachedMapData!.players);
+      setCoaches(cachedMapData!.coaches);
+      setClubs(cachedMapData!.clubs);
+      setLoading(false);
+      return;
+    }
 
-  // Self-contained, responsive OpenStreetMap + Leaflet HTML template
-  const osmHtml = useMemo(() => {
-    const clubsJson = JSON.stringify(
-      clubs.map((c, i) => ({
-        id: c.id,
-        name: c.name,
-        lat: c.lat,
-        lng: c.lng,
-        courtsCount: c.courtsCount,
-        distance: c.distance,
-        index: i + 1,
-      }))
-    );
+    if (!cachedMapData) {
+      setLoading(true);
+    }
+    try {
+      const [mapRes, clubsRes] = await Promise.all([
+        apiFetchPublicMap(),
+        apiFetchPublicClubs(),
+      ]);
+      const newPlayers = mapRes.players || [];
+      const newCoaches = mapRes.coaches || [];
+      const newClubs = clubsRes || [];
+
+      cachedMapData = {
+        players: newPlayers,
+        coaches: newCoaches,
+        clubs: newClubs,
+        timestamp: Date.now(),
+      };
+
+      setPlayers(newPlayers);
+      setCoaches(newCoaches);
+      setClubs(newClubs);
+    } catch (err) {
+      console.warn('Error loading public map data:', err);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    loadMapData();
+  }, [loadMapData]);
+
+  // Recenter map handler
+  const handleRecenter = () => {
+    const js = `window.recenterMap && window.recenterMap(43.2965, 5.3698, 11); true;`;
+    if (Platform.OS === 'web') {
+      (iframeRef.current?.contentWindow as any)?.recenterMap?.(43.2965, 5.3698, 11);
+    } else {
+      webViewRef.current?.injectJavaScript(js);
+    }
+  };
+
+  // Sync category and search query into WebView on the fly (NO HTML RELOAD)
+  useEffect(() => {
+    const js = `window.applyFilter && window.applyFilter(${JSON.stringify(category)}, ${JSON.stringify(searchQuery)}); true;`;
+    if (Platform.OS === 'web') {
+      if (iframeRef.current?.contentWindow) {
+        (iframeRef.current.contentWindow as any).applyFilter?.(category, searchQuery);
+      }
+    } else {
+      webViewRef.current?.injectJavaScript(js);
+    }
+  }, [category, searchQuery]);
+
+  // Handle message from WebView (clicking a pin on the map)
+  const handleWebViewMessage = (event: WebViewMessageEvent) => {
+    try {
+      const msg = JSON.parse(event.nativeEvent.data);
+      if (msg.type === 'SELECT_PIN') {
+        if (msg.category === 'player') {
+          const p = players.find((item) => String(item.id) === String(msg.id));
+          if (p) setSelectedItem({ type: 'player', data: p });
+        } else if (msg.category === 'coach') {
+          const c = coaches.find((item) => String(item.id) === String(msg.id));
+          if (c) setSelectedItem({ type: 'coach', data: c });
+        } else if (msg.category === 'club') {
+          const cl = clubs.find((item) => String(item.id) === String(msg.id));
+          if (cl) setSelectedItem({ type: 'club', data: cl });
+        }
+      }
+    } catch (e) {
+      console.warn('WebView message parse error:', e);
+    }
+  };
+
+  // Launch native navigation
+  const openNavigation = (lat: number, lng: number, name: string) => {
+    const gmapsWebUrl = `https://www.google.com/maps/dir/?api=1&destination=${lat},${lng}`;
+    if (Platform.OS === 'android') {
+      const gmapsNavUrl = `google.navigation:q=${lat},${lng}`;
+      Linking.canOpenURL(gmapsNavUrl)
+        .then((supported) => {
+          if (supported) return Linking.openURL(gmapsNavUrl);
+          return Linking.openURL(gmapsWebUrl);
+        })
+        .catch(() => Linking.openURL(gmapsWebUrl));
+    } else {
+      Linking.openURL(gmapsWebUrl);
+    }
+  };
+
+  // Build Leaflet HTML string ONCE per dataset (never on every keystroke)
+  const leafletHtml = useMemo(() => {
+    const playersJson = JSON.stringify(players);
+    const coachesJson = JSON.stringify(coaches);
+    // Limit clubs slice to 250 for instant mobile rasterization
+    const clubsJson = JSON.stringify(clubs.slice(0, 250));
 
     return `
 <!DOCTYPE html>
@@ -192,389 +196,294 @@ export const MapScreen: React.FC<MapScreenProps> = memo(({
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
-  <title>Smashly OpenStreetMap</title>
-  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="" />
-  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css" />
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
   <style>
-    * { margin: 0; padding: 0; box-sizing: border-box; }
-    html, body, #osm-map {
-      width: 100%;
+    * {
+      -webkit-tap-highlight-color: transparent;
+      -webkit-touch-callout: none;
+      -webkit-user-select: none;
+      user-select: none;
+      box-sizing: border-box;
+    }
+    html, body, #map {
       height: 100%;
+      width: 100%;
+      margin: 0;
+      padding: 0;
       background: #0f172a;
       overflow: hidden;
-      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
     }
-    
-    /* Custom Pin Badges */
-    .pin-container {
-      position: relative;
-      width: 34px;
-      height: 38px;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      cursor: pointer;
+
+    /* GPU layer promotion for silky 60-120fps panning & zooming */
+    #map, .leaflet-pane, .leaflet-tile-pane, .leaflet-marker-pane, .leaflet-map-pane {
+      transform: translate3d(0, 0, 0);
+      -webkit-transform: translate3d(0, 0, 0);
+      will-change: transform;
+      backface-visibility: hidden;
+      -webkit-backface-visibility: hidden;
+      perspective: 1000px;
     }
-    .pin-body {
-      width: 28px;
-      height: 28px;
+
+    .leaflet-control-zoom { display: none !important; }
+    .leaflet-bottom { bottom: 92px !important; }
+    .leaflet-control-attribution {
+      background: rgba(15, 23, 42, 0.85) !important;
+      color: #64748b !important;
+      font-size: 8px !important;
+      padding: 2px 6px !important;
+      border-top-left-radius: 6px;
+    }
+    .leaflet-control-attribution a { color: #38bdf8 !important; text-decoration: none; }
+
+    /* Custom Pins with Hardware Layer Elevation */
+    .pin-player {
+      background: #2563eb;
+      color: #ffffff;
+      border: 2px solid #60a5fa;
       border-radius: 50%;
-      background: #ef4444;
-      border: 2px solid #ffffff;
-      box-shadow: 0 3px 8px rgba(0,0,0,0.5);
+      width: 26px;
+      height: 26px;
       display: flex;
       align-items: center;
       justify-content: center;
       font-weight: 800;
-      font-size: 12px;
-      color: #ffffff;
-      transition: all 0.25s cubic-bezier(0.34, 1.56, 0.64, 1);
-      position: relative;
-      z-index: 2;
-    }
-    .pin-pointer {
-      position: absolute;
-      bottom: 2px;
-      left: 50%;
-      transform: translateX(-50%);
-      width: 0;
-      height: 0;
-      border-left: 5px solid transparent;
-      border-right: 5px solid transparent;
-      border-top: 6px solid #ef4444;
-      transition: border-top-color 0.25s;
-      z-index: 1;
-    }
-    .pin-glow {
-      position: absolute;
-      top: -6px;
-      left: -3px;
-      width: 40px;
-      height: 40px;
-      border-radius: 50%;
-      background: rgba(56, 189, 248, 0.4);
-      display: none;
-      animation: pulseGlow 1.8s infinite ease-out;
-      z-index: 0;
-    }
-    .pin-container.selected .pin-body {
-      background: #0284c7;
-      border-color: #38bdf8;
-      transform: scale(1.22);
-      box-shadow: 0 0 16px rgba(56, 189, 248, 0.85);
-    }
-    .pin-container.selected .pin-pointer {
-      border-top-color: #0284c7;
-      bottom: 0px;
-    }
-    .pin-container.selected .pin-glow {
-      display: block;
-    }
-    @keyframes pulseGlow {
-      0% { transform: scale(0.6); opacity: 0.9; }
-      100% { transform: scale(1.6); opacity: 0; }
-    }
-
-    /* Tooltip Custom styling */
-    .leaflet-tooltip.osm-tooltip {
-      background-color: rgba(15, 23, 42, 0.92);
-      color: #f8fafc;
-      border: 1px solid #38bdf8;
-      border-radius: 8px;
-      padding: 4px 8px;
-      font-weight: 600;
       font-size: 11px;
-      box-shadow: 0 4px 12px rgba(0,0,0,0.4);
+      box-shadow: 0 2px 8px rgba(37,99,235,0.6);
+      cursor: pointer;
+      transform: translate3d(0,0,0);
+      -webkit-transform: translate3d(0,0,0);
+      will-change: transform;
+      contain: layout style paint;
     }
-    .leaflet-tooltip-top.osm-tooltip::before {
-      border-top-color: #38bdf8;
+    .pin-coach {
+      background: #f97316;
+      color: #ffffff;
+      border: 2px solid #fdba74;
+      border-radius: 50%;
+      width: 28px;
+      height: 28px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 13px;
+      box-shadow: 0 2px 8px rgba(249,115,22,0.6);
+      cursor: pointer;
+      transform: translate3d(0,0,0);
+      -webkit-transform: translate3d(0,0,0);
+      will-change: transform;
+      contain: layout style paint;
     }
-
-    /* Attribution link */
-    .leaflet-control-attribution {
-      background: rgba(15, 23, 42, 0.8) !important;
-      color: #94a3b8 !important;
-      font-size: 9px !important;
-      padding: 2px 6px !important;
+    .pin-club {
+      background: #10b981;
+      color: #ffffff;
+      border: 2px solid #6ee7b7;
+      border-radius: 8px;
+      padding: 2px 5px;
+      font-weight: 700;
+      font-size: 9px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      box-shadow: 0 2px 8px rgba(16,185,129,0.5);
+      white-space: nowrap;
+      cursor: pointer;
+      transform: translate3d(0,0,0);
+      -webkit-transform: translate3d(0,0,0);
+      will-change: transform;
+      contain: layout style paint;
     }
-    .leaflet-control-attribution a {
-      color: #38bdf8 !important;
-      text-decoration: none;
+    .leaflet-tooltip.dark-tip {
+      background: #1e293b !important;
+      color: #f8fafc !important;
+      border: 1px solid #38bdf8 !important;
+      border-radius: 8px !important;
+      padding: 4px 8px !important;
+      font-weight: 700 !important;
+      font-size: 11px !important;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.5) !important;
+    }
+    .leaflet-tooltip-top.dark-tip::before {
+      border-top-color: #38bdf8 !important;
     }
   </style>
 </head>
 <body>
-  <div id="osm-map"></div>
+  <div id="map"></div>
   <script>
-    var clubs = ${clubsJson};
-    var selectedId = "${selectedClub.id}";
-    var currentType = "${mapType}";
-
-    // Initialize Map
-    var map = L.map('osm-map', {
+    // Hardware accelerated Leaflet setup
+    var map = L.map('map', {
       zoomControl: false,
-      attributionControl: true
-    }).setView([${selectedClub.lat}, ${selectedClub.lng}], ${computedZoom});
+      attributionControl: true,
+      preferCanvas: true,
+      fadeAnimation: true,
+      zoomAnimation: true,
+      markerZoomAnimation: true,
+      inertia: true,
+      inertiaDeceleration: 3000,
+      inertiaMaxSpeed: 1500,
+      wheelDebounceTime: 40
+    }).setView([43.2965, 5.3698], 10); // Marseille center
 
-    // Street Layer: Standard OpenStreetMap
-    var streetLayer = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-      maxZoom: 19,
-      attribution: '&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank">OpenStreetMap</a>'
-    });
+    // CartoDB Dark Matter layer with caching
+    L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png?key=cb1_2m38_1_1a27ed67c11b8a29ad8d6195', {
+      maxZoom: 18,
+      subdomains: 'abcd',
+      updateWhenIdle: true,
+      updateWhenZooming: false,
+      keepBuffer: 6,
+      attribution: '&copy; Smashly AI &bull; CartoDB'
+    }).addTo(map);
 
-    // Satellite Layer: High-res Esri World Imagery
-    var satLayer = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
-      maxZoom: 19,
-      attribution: 'Esri Satellite'
-    });
+    var rawPlayers = ${playersJson};
+    var rawCoaches = ${coachesJson};
+    var rawClubs = ${clubsJson};
 
-    if (currentType === 'satellite') {
-      satLayer.addTo(map);
-    } else {
-      streetLayer.addTo(map);
-    }
-
-    var markerRefs = {};
-
-    function buildIcon(index, isSelected) {
-      return L.divIcon({
-        className: 'pin-icon-wrap',
-        iconSize: [34, 38],
-        iconAnchor: [17, 34],
-        html: '<div class="pin-container ' + (isSelected ? 'selected' : '') + '">' +
-                '<div class="pin-glow"></div>' +
-                '<div class="pin-body">' + index + '</div>' +
-                '<div class="pin-pointer"></div>' +
-              '</div>'
-      });
-    }
-
-    clubs.forEach(function(club) {
-      var isSelected = (club.id === selectedId);
-      var m = L.marker([club.lat, club.lng], {
-        icon: buildIcon(club.index, isSelected),
-        zIndexOffset: isSelected ? 1000 : 100
-      }).addTo(map);
-
-      m.bindTooltip(club.name + ' (' + club.courtsCount + ' pistes)', {
-        direction: 'top',
-        offset: [0, -28],
-        className: 'osm-tooltip'
-      });
-
-      m.on('click', function() {
-        sendSelection(club.id);
-      });
-
-      markerRefs[club.id] = { marker: m, index: club.index };
-    });
-
-    function sendSelection(clubId) {
-      var payload = JSON.stringify({ type: 'SELECT_CLUB', id: clubId });
-      if (window.ReactNativeWebView && window.ReactNativeWebView.postMessage) {
-        window.ReactNativeWebView.postMessage(payload);
-      } else if (window.parent && window.parent.postMessage) {
-        window.parent.postMessage(payload, '*');
-      }
-    }
-
-    window.selectClub = function(clubId, lat, lng, zoom) {
-      selectedId = clubId;
-      Object.keys(markerRefs).forEach(function(id) {
-        var item = markerRefs[id];
-        var active = (id === clubId);
-        item.marker.setIcon(buildIcon(item.index, active));
-        item.marker.setZIndexOffset(active ? 1000 : 100);
-      });
+    function sendSelection(category, id, lat, lng) {
       if (lat && lng) {
-        map.flyTo([lat, lng], zoom || map.getZoom(), {
-          duration: 0.7,
-          easeLinearity: 0.25
-        });
+        map.panTo([lat - 0.022, lng], { animate: true, duration: 0.35 });
       }
-    };
-
-    window.switchLayer = function(type) {
-      currentType = type;
-      if (type === 'satellite') {
-        if (map.hasLayer(streetLayer)) map.removeLayer(streetLayer);
-        if (!map.hasLayer(satLayer)) satLayer.addTo(map);
-      } else {
-        if (map.hasLayer(satLayer)) map.removeLayer(satLayer);
-        if (!map.hasLayer(streetLayer)) streetLayer.addTo(map);
+      var msg = JSON.stringify({ type: 'SELECT_PIN', category: category, id: id });
+      if (window.ReactNativeWebView && window.ReactNativeWebView.postMessage) {
+        window.ReactNativeWebView.postMessage(msg);
+      } else if (window.parent && window.parent.postMessage) {
+        window.parent.postMessage(msg, '*');
       }
-    };
+    }
 
-    window.setZoom = function(z) {
-      map.setZoom(z);
-    };
+    // High performance LayerGroups
+    var playerGroup = L.layerGroup().addTo(map);
+    var coachGroup = L.layerGroup().addTo(map);
+    var clubGroup = L.layerGroup().addTo(map);
 
-    window.zoomIn = function() {
-      map.zoomIn();
-    };
-
-    window.zoomOut = function() {
-      map.zoomOut();
-    };
-
-    // Support Web iframe messaging
-    window.addEventListener('message', function(evt) {
-      try {
-        var data = typeof evt.data === 'string' ? JSON.parse(evt.data) : evt.data;
-        if (data.action === 'selectClub') {
-          window.selectClub(data.id, data.lat, data.lng, data.zoom);
-        } else if (data.action === 'switchLayer') {
-          window.switchLayer(data.layer);
-        } else if (data.action === 'setZoom') {
-          window.setZoom(data.zoom);
-        } else if (data.action === 'zoomIn') {
-          window.zoomIn();
-        } else if (data.action === 'zoomOut') {
-          window.zoomOut();
-        }
-      } catch (e) {}
+    // 1. Build Player Markers
+    var playerItems = [];
+    rawPlayers.forEach(function(p) {
+      if (!p.lat || !p.lng) return;
+      var icon = L.divIcon({
+        className: '',
+        iconSize: [26, 26],
+        iconAnchor: [13, 13],
+        html: '<div class="pin-player">N' + (p.level || 5) + '</div>'
+      });
+      var m = L.marker([p.lat, p.lng], { icon: icon });
+      m.bindTooltip(p.name + ' · Niveau ' + p.level + ' (' + p.city + ')', {
+        direction: 'top',
+        className: 'dark-tip',
+        offset: [0, -12]
+      });
+      m.on('click', function() { sendSelection('player', p.id, p.lat, p.lng); });
+      playerGroup.addLayer(m);
+      playerItems.push({
+        marker: m,
+        searchStr: ((p.name || '') + ' ' + (p.last_name || '') + ' ' + (p.city || '')).toLowerCase(),
+        lat: p.lat,
+        lng: p.lng
+      });
     });
+
+    // 2. Build Coach Markers
+    var coachItems = [];
+    rawCoaches.forEach(function(c) {
+      if (!c.lat || !c.lng) return;
+      var icon = L.divIcon({
+        className: '',
+        iconSize: [28, 28],
+        iconAnchor: [14, 14],
+        html: '<div class="pin-coach">🎓</div>'
+      });
+      var m = L.marker([c.lat, c.lng], { icon: icon });
+      m.bindTooltip('Coach ' + c.name + ' · ' + (c.hourly_rate ? c.hourly_rate + '€/h' : 'Pro') + ' (' + c.city + ')', {
+        direction: 'top',
+        className: 'dark-tip',
+        offset: [0, -14]
+      });
+      m.on('click', function() { sendSelection('coach', c.id, c.lat, c.lng); });
+      coachGroup.addLayer(m);
+      coachItems.push({
+        marker: m,
+        searchStr: ((c.name || '') + ' ' + (c.last_name || '') + ' ' + (c.city || '')).toLowerCase(),
+        lat: c.lat,
+        lng: c.lng
+      });
+    });
+
+    // 3. Build Club Markers
+    var clubItems = [];
+    rawClubs.forEach(function(cl) {
+      if (!cl.lat || !cl.lng) return;
+      var icon = L.divIcon({
+        className: '',
+        iconSize: [40, 20],
+        iconAnchor: [20, 10],
+        html: '<div class="pin-club">🎾 ' + (cl.nb_courts ? cl.nb_courts + 'p' : '') + '</div>'
+      });
+      var m = L.marker([cl.lat, cl.lng], { icon: icon });
+      m.bindTooltip(cl.name + ' (' + cl.city + ')', {
+        direction: 'top',
+        className: 'dark-tip',
+        offset: [0, -10]
+      });
+      m.on('click', function() { sendSelection('club', cl.id, cl.lat, cl.lng); });
+      clubGroup.addLayer(m);
+      clubItems.push({
+        marker: m,
+        searchStr: ((cl.name || '') + ' ' + (cl.city || '')).toLowerCase(),
+        lat: cl.lat,
+        lng: cl.lng
+      });
+    });
+
+    // Real-time zero-reload GPU filtering
+    window.applyFilter = function(category, query) {
+      var q = (query || '').toLowerCase().trim();
+
+      // Players
+      playerGroup.clearLayers();
+      if (category === 'all' || category === 'players') {
+        for (var i = 0; i < playerItems.length; i++) {
+          if (!q || playerItems[i].searchStr.indexOf(q) !== -1) {
+            playerGroup.addLayer(playerItems[i].marker);
+          }
+        }
+      }
+
+      // Coaches
+      coachGroup.clearLayers();
+      if (category === 'all' || category === 'coaches') {
+        for (var j = 0; j < coachItems.length; j++) {
+          if (!q || coachItems[j].searchStr.indexOf(q) !== -1) {
+            coachGroup.addLayer(coachItems[j].marker);
+          }
+        }
+      }
+
+      // Clubs
+      clubGroup.clearLayers();
+      if (category === 'all' || category === 'clubs') {
+        for (var k = 0; k < clubItems.length; k++) {
+          if (!q || clubItems[k].searchStr.indexOf(q) !== -1) {
+            clubGroup.addLayer(clubItems[k].marker);
+          }
+        }
+      }
+    };
+
+    window.recenterMap = function(lat, lng, zoom) {
+      map.flyTo([lat || 43.2965, lng || 5.3698], zoom || 11, {
+        animate: true,
+        duration: 0.6
+      });
+    };
   </script>
 </body>
 </html>
     `;
-  }, [clubs]);
-
-  // Sync club selection & zoom changes with Leaflet
-  useEffect(() => {
-    if (Platform.OS === 'web') {
-      try {
-        iframeRef.current?.contentWindow?.postMessage(
-          JSON.stringify({
-            action: 'selectClub',
-            id: selectedClub.id,
-            lat: selectedClub.lat,
-            lng: selectedClub.lng,
-            zoom: computedZoom,
-          }),
-          '*'
-        );
-      } catch (e) {}
-    } else {
-      webViewRef.current?.injectJavaScript(
-        `window.selectClub && window.selectClub('${selectedClub.id}', ${selectedClub.lat}, ${selectedClub.lng}, ${computedZoom}); true;`
-      );
-    }
-  }, [selectedClub, computedZoom]);
-
-  // Sync layer changes (Plan vs Satellite) with Leaflet
-  useEffect(() => {
-    if (Platform.OS === 'web') {
-      try {
-        iframeRef.current?.contentWindow?.postMessage(
-          JSON.stringify({ action: 'switchLayer', layer: mapType }),
-          '*'
-        );
-      } catch (e) {}
-    } else {
-      webViewRef.current?.injectJavaScript(
-        `window.switchLayer && window.switchLayer('${mapType}'); true;`
-      );
-    }
-  }, [mapType]);
-
-  // Web event listener for postMessage from Leaflet
-  useEffect(() => {
-    if (Platform.OS === 'web') {
-      const handleWebMessage = (e: MessageEvent) => {
-        try {
-          const data = typeof e.data === 'string' ? JSON.parse(e.data) : e.data;
-          if (data?.type === 'SELECT_CLUB') {
-            const found = clubs.find((c) => c.id === data.id);
-            if (found) setSelectedClub(found);
-          }
-        } catch {}
-      };
-      window.addEventListener('message', handleWebMessage);
-      return () => window.removeEventListener('message', handleWebMessage);
-    }
-  }, [clubs]);
-
-  // Handle message from React Native WebView (Android/iOS)
-  const handleWebViewMessage = (event: WebViewMessageEvent) => {
-    try {
-      const data = JSON.parse(event.nativeEvent.data);
-      if (data?.type === 'SELECT_CLUB') {
-        const found = clubs.find((c) => c.id === data.id);
-        if (found) {
-          setSelectedClub(found);
-        }
-      }
-    } catch (e) {
-      console.log('Error parsing WebView message:', e);
-    }
-  };
-
-  // Zoom management: delta steps
-  const handleZoom = (delta: number) => {
-    if (delta > 0) {
-      if (Platform.OS === 'web') {
-        iframeRef.current?.contentWindow?.postMessage(JSON.stringify({ action: 'zoomIn' }), '*');
-      } else {
-        webViewRef.current?.injectJavaScript('window.zoomIn && window.zoomIn(); true;');
-      }
-      setZoomLevel((prev) => Math.min(2.0, Math.round((prev + 0.3) * 100) / 100));
-    } else {
-      if (Platform.OS === 'web') {
-        iframeRef.current?.contentWindow?.postMessage(JSON.stringify({ action: 'zoomOut' }), '*');
-      } else {
-        webViewRef.current?.injectJavaScript('window.zoomOut && window.zoomOut(); true;');
-      }
-      setZoomLevel((prev) => Math.max(0.35, Math.round((prev - 0.3) * 100) / 100));
-    }
-  };
-
-  // Automatically detect OS and launch native route navigation (Google Maps on Android, Apple/Google Maps on iOS)
-  const openDirections = (club: ClubItem) => {
-    const gmapsWebUrl = `https://www.google.com/maps/dir/?api=1&destination=${club.lat},${club.lng}`;
-
-    if (Platform.OS === 'android') {
-      const gmapsNavUrl = `google.navigation:q=${club.lat},${club.lng}`;
-      const androidGeoUrl = `geo:${club.lat},${club.lng}?q=${club.lat},${club.lng}(${encodeURIComponent(club.name)})`;
-
-      Linking.canOpenURL(gmapsNavUrl)
-        .then((supported) => {
-          if (supported) {
-            return Linking.openURL(gmapsNavUrl);
-          }
-          return Linking.openURL(androidGeoUrl);
-        })
-        .catch(() => {
-          Linking.openURL(androidGeoUrl).catch(() => {
-            Linking.openURL(gmapsWebUrl);
-          });
-        });
-    } else if (Platform.OS === 'ios') {
-      const gmapsIosUrl = `comgooglemaps://?daddr=${club.lat},${club.lng}&directionsmode=driving`;
-      const appleMapsUrl = `maps:0,0?q=${encodeURIComponent(club.name)}&daddr=${club.lat},${club.lng}&dirflg=d`;
-
-      // If user has Google Maps installed on iOS, open in Google Maps; otherwise open native Apple Maps
-      Linking.canOpenURL('comgooglemaps://')
-        .then((hasGmaps) => {
-          if (hasGmaps) {
-            return Linking.openURL(gmapsIosUrl);
-          }
-          return Linking.openURL(appleMapsUrl);
-        })
-        .catch(() => {
-          Linking.openURL(appleMapsUrl).catch(() => {
-            Linking.openURL(gmapsWebUrl);
-          });
-        });
-    } else {
-      // Web / fallback
-      Linking.openURL(gmapsWebUrl);
-    }
-  };
+  }, [players, coaches, clubs]);
 
   return (
-    <View style={[styles.container, { paddingTop: 4 }]}>
-      {/* Top Header (Swipeable down) */}
+    <View style={[styles.container, { paddingTop: insets.top }]}>
+      {/* Header */}
       <View style={styles.header} {...panHandlers}>
         <View style={styles.headerTitleRow}>
           <View style={styles.headerIconBox}>
@@ -582,470 +491,325 @@ export const MapScreen: React.FC<MapScreenProps> = memo(({
           </View>
           <View>
             <Text style={styles.headerTitle}>Smashly Map</Text>
-            <Text style={styles.headerSubtitle}>OpenStreetMap · Terrains de padel</Text>
+            <Text style={styles.headerSubtitle}>
+              {players.length} Joueurs · {coaches.length} Coachs · {clubs.length} Clubs
+            </Text>
           </View>
         </View>
 
-        <TouchableOpacity
-          activeOpacity={0.7}
-          style={styles.backBtn}
-          onPress={onGoHome}
+        <View style={styles.headerRightActions}>
+          <TouchableOpacity
+            activeOpacity={0.7}
+            style={styles.refreshBtn}
+            onPress={() => loadMapData(true)}
+            accessibilityRole="button"
+            accessibilityLabel="Actualiser la carte"
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+          >
+            {loading ? (
+              <ActivityIndicator size="small" color="#38bdf8" />
+            ) : (
+              <RefreshCw size={17} color="#94a3b8" />
+            )}
+          </TouchableOpacity>
+          <TouchableOpacity
+            activeOpacity={0.7}
+            style={styles.backBtn}
+            onPress={onGoHome}
+            accessibilityRole="button"
+            accessibilityLabel="Retour à l'accueil"
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+          >
+            <ArrowLeft size={20} color="#94a3b8" />
+          </TouchableOpacity>
+        </View>
+      </View>
+
+      {/* Search Input Bar with Clear Button */}
+      <View style={styles.searchBarWrapper}>
+        <View style={styles.searchInner}>
+          <Search size={16} color="#94a3b8" style={{ marginRight: 8 }} />
+          <TextInput
+            style={styles.searchInput}
+            placeholder="Rechercher par ville (Marseille, Paris...), joueur ou club..."
+            placeholderTextColor="#64748b"
+            value={searchQuery}
+            onChangeText={setSearchQuery}
+            clearButtonMode="while-editing"
+          />
+          {searchQuery.trim() !== '' && (
+            <TouchableOpacity
+              activeOpacity={0.7}
+              style={styles.searchClearBtn}
+              onPress={() => setSearchQuery('')}
+              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+            >
+              <X size={14} color="#94a3b8" />
+            </TouchableOpacity>
+          )}
+        </View>
+      </View>
+
+      {/* Filter Category Tabs with Horizontal Scrolling */}
+      <View style={styles.filterTabsContainer}>
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={styles.filterTabsRow}
         >
-          <ArrowLeft size={20} color="#94a3b8" />
+          <TouchableOpacity
+            activeOpacity={0.8}
+            style={[styles.filterChip, category === 'all' && styles.filterChipActiveAll]}
+            onPress={() => setCategory('all')}
+          >
+            <Text style={[styles.filterChipText, category === 'all' && styles.filterChipTextActive]}>
+              Tous
+            </Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            activeOpacity={0.8}
+            style={[styles.filterChip, category === 'players' && styles.filterChipActivePlayers]}
+            onPress={() => setCategory('players')}
+          >
+            <Users2 size={13} color={category === 'players' ? '#ffffff' : '#94a3b8'} style={{ marginRight: 5 }} />
+            <Text style={[styles.filterChipText, category === 'players' && styles.filterChipTextActive]}>
+              Joueurs ({players.length})
+            </Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            activeOpacity={0.8}
+            style={[styles.filterChip, category === 'coaches' && styles.filterChipActiveCoaches]}
+            onPress={() => setCategory('coaches')}
+          >
+            <GraduationCap size={13} color={category === 'coaches' ? '#ffffff' : '#94a3b8'} style={{ marginRight: 5 }} />
+            <Text style={[styles.filterChipText, category === 'coaches' && styles.filterChipTextActive]}>
+              Coachs ({coaches.length})
+            </Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            activeOpacity={0.8}
+            style={[styles.filterChip, category === 'clubs' && styles.filterChipActiveClubs]}
+            onPress={() => setCategory('clubs')}
+          >
+            <MapPin size={13} color={category === 'clubs' ? '#ffffff' : '#94a3b8'} style={{ marginRight: 5 }} />
+            <Text style={[styles.filterChipText, category === 'clubs' && styles.filterChipTextActive]}>
+              Clubs ({clubs.length > 250 ? '250+' : clubs.length})
+            </Text>
+          </TouchableOpacity>
+        </ScrollView>
+      </View>
+
+      {/* Interactive Leaflet Map with Full Hardware Acceleration */}
+      <View style={styles.mapContainer}>
+        {Platform.OS === 'web' ? (
+          <iframe
+            ref={iframeRef as any}
+            srcDoc={leafletHtml}
+            style={{ width: '100%', height: '100%', border: 'none' }}
+          />
+        ) : (
+          <NativeWebView
+            ref={webViewRef}
+            source={{ html: leafletHtml }}
+            style={styles.webView}
+            onMessage={handleWebViewMessage}
+            javaScriptEnabled={true}
+            domStorageEnabled={true}
+            androidHardwareAccelerationDisabled={false}
+            androidLayerType="hardware"
+            renderToHardwareTextureAndroid={true}
+            overScrollMode="never"
+            scrollEnabled={false}
+            showsHorizontalScrollIndicator={false}
+            showsVerticalScrollIndicator={false}
+            cacheEnabled={true}
+            cacheMode="LOAD_DEFAULT"
+            mixedContentMode="always"
+            originWhitelist={['*']}
+            onLoadEnd={() => {
+              const js = `window.applyFilter && window.applyFilter(${JSON.stringify(category)}, ${JSON.stringify(searchQuery)}); true;`;
+              webViewRef.current?.injectJavaScript(js);
+            }}
+          />
+        )}
+
+        {/* Floating Recenter Button */}
+        <TouchableOpacity
+          activeOpacity={0.8}
+          style={styles.recenterFab}
+          onPress={handleRecenter}
+        >
+          <Target size={18} color="#ffffff" />
         </TouchableOpacity>
       </View>
 
-      <ScrollView
-        style={styles.scroll}
-        scrollEnabled={!mapTouchActive}
-        contentContainerStyle={{
-          paddingHorizontal: 16,
-          paddingBottom: insets.bottom + 95,
-        }}
-        showsVerticalScrollIndicator={false}
-        removeClippedSubviews={Platform.OS === 'android'}
-      >
-        {/* OPENSTREETMAP INTERACTIVE CONTAINER */}
-        <View style={styles.mapCardContainer}>
-          {/* Top Bar of Map: Mode Toggle & Location Badge */}
-          <View style={styles.mapTopControls}>
-            {/* Row 1: Location Badge + Plan / Satellite Switch */}
-            <View style={styles.mapControlsHeaderRow}>
-              <View style={styles.locationPill}>
-                <View style={styles.liveGpsDot} />
-                <Text style={styles.locationPillText} numberOfLines={1}>
-                  {zoomLevel < 0.6 ? 'Région PACA' : 'Marseille · Aix-en-Provence'}
-                </Text>
-              </View>
-
-              {/* Plan / Satellite Switch */}
-              <View style={styles.layerSwitchRow}>
-                <TouchableOpacity
-                  activeOpacity={0.8}
-                  style={[
-                    styles.layerBtn,
-                    mapType === 'plan' && styles.layerBtnActive,
-                  ]}
-                  onPress={() => setMapType('plan')}
-                >
-                  <Text
-                    style={[
-                      styles.layerBtnText,
-                      mapType === 'plan' && styles.layerBtnTextActive,
-                    ]}
-                  >
-                    Plan
-                  </Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  activeOpacity={0.8}
-                  style={[
-                    styles.layerBtn,
-                    mapType === 'satellite' && styles.layerBtnActive,
-                  ]}
-                  onPress={() => setMapType('satellite')}
-                >
-                  <Text
-                    style={[
-                      styles.layerBtnText,
-                      mapType === 'satellite' && styles.layerBtnTextActive,
-                    ]}
-                  >
-                    Sat.
-                  </Text>
-                </TouchableOpacity>
-              </View>
-            </View>
-
-            {/* Row 2: Full-width Quick Zoom Presets (Never clips or hides) */}
-            <View style={styles.zoomPresetRow}>
-              <TouchableOpacity
-                activeOpacity={0.75}
-                style={[
-                  styles.presetBtn,
-                  zoomLevel <= 0.55 && styles.presetBtnActive,
-                ]}
-                onPress={() => setZoomLevel(0.4)}
-              >
-                <Globe2
-                  size={12}
-                  color={zoomLevel <= 0.55 ? '#ffffff' : '#94a3b8'}
-                  style={{ marginRight: 4 }}
-                />
-                <Text
-                  style={[
-                    styles.presetBtnText,
-                    zoomLevel <= 0.55 && styles.presetBtnTextActive,
-                  ]}
-                >
-                  Région
-                </Text>
-              </TouchableOpacity>
-
-              <TouchableOpacity
-                activeOpacity={0.75}
-                style={[
-                  styles.presetBtn,
-                  zoomLevel > 0.55 && zoomLevel <= 1.1 && styles.presetBtnActive,
-                ]}
-                onPress={() => setZoomLevel(0.85)}
-              >
-                <Text
-                  style={[
-                    styles.presetBtnText,
-                    zoomLevel > 0.55 && zoomLevel <= 1.1 && styles.presetBtnTextActive,
-                  ]}
-                >
-                  Agglo
-                </Text>
-              </TouchableOpacity>
-
-              <TouchableOpacity
-                activeOpacity={0.75}
-                style={[
-                  styles.presetBtn,
-                  zoomLevel > 1.1 && styles.presetBtnActive,
-                ]}
-                onPress={() => setZoomLevel(1.4)}
-              >
-                <Text
-                  style={[
-                    styles.presetBtnText,
-                    zoomLevel > 1.1 && styles.presetBtnTextActive,
-                  ]}
-                >
-                  Focus
-                </Text>
-              </TouchableOpacity>
-            </View>
+      {/* Selected Item Floating Card - Raised above persistent BottomNavBar */}
+      {selectedItem && (
+        <View
+          style={[
+            styles.detailDrawer,
+            {
+              bottom: Math.max(insets.bottom, 12) + 76,
+            },
+          ]}
+        >
+          {/* Top handle and Close Button */}
+          <View style={styles.drawerTopBar}>
+            <View style={styles.drawerHandle} />
+            <TouchableOpacity
+              activeOpacity={0.7}
+              style={styles.drawerCloseBtn}
+              onPress={() => setSelectedItem(null)}
+              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+            >
+              <X size={16} color="#94a3b8" />
+            </TouchableOpacity>
           </View>
-
-          {/* OPENSTREETMAP LEAFLET CANVAS (Isolated Map Gestures with GPU Compositing) */}
-          <View
-            style={styles.mapCanvasWrapper}
-            renderToHardwareTextureAndroid={true}
-            shouldRasterizeIOS={true}
-            onTouchStart={() => setMapTouchActive(true)}
-            onTouchEnd={() => setMapTouchActive(false)}
-            onTouchCancel={() => setMapTouchActive(false)}
-          >
-            {Platform.OS === 'web' ? (
-              // @ts-ignore Web iframe rendering
-              <iframe
-                ref={iframeRef}
-                srcDoc={osmHtml}
-                width="100%"
-                height="100%"
-                style={{
-                  border: 'none',
-                  width: '100%',
-                  height: 310,
-                  backgroundColor: '#0f172a',
-                }}
-                title="OpenStreetMap Padel"
-              />
-            ) : (
-              <NativeWebView
-                ref={webViewRef}
-                source={{ html: osmHtml }}
-                style={styles.mapWebView}
-                containerStyle={styles.mapWebViewContainer}
-                javaScriptEnabled={true}
-                domStorageEnabled={true}
-                startInLoadingState={false}
-                nestedScrollEnabled={true}
-                scalesPageToFit={false}
-                androidHardwareAccelerationDisabled={false}
-                androidLayerType="hardware"
-                renderToHardwareTextureAndroid={true}
-                onMessage={handleWebViewMessage}
-              />
+          <View style={styles.drawerContentRow}>
+            {selectedItem.type === 'player' && (
+              <>
+                <View style={styles.drawerAvatarBox}>
+                  <Text style={styles.drawerAvatarText}>
+                    {selectedItem.data.name[0] || 'J'}
+                  </Text>
+                </View>
+                <View style={{ flex: 1, marginLeft: 12 }}>
+                  <View style={styles.drawerTitleRow}>
+                    <Text style={styles.drawerName}>
+                      {selectedItem.data.name} {selectedItem.data.last_name || ''}
+                    </Text>
+                    <View style={styles.drawerLevelBadge}>
+                      <Text style={styles.drawerLevelText}>
+                        Niveau {selectedItem.data.level}
+                      </Text>
+                    </View>
+                  </View>
+                  <Text style={styles.drawerSub}>📍 {selectedItem.data.city}</Text>
+                  {selectedItem.data.clubs && selectedItem.data.clubs.length > 0 && (
+                    <Text style={styles.drawerClubs}>
+                      Club : {selectedItem.data.clubs.join(', ')}
+                    </Text>
+                  )}
+                </View>
+              </>
             )}
 
-            {/* Provider Watermark & Zoom Badge */}
-            <View style={styles.zoomPercentBadge}>
-              <Compass size={12} color="#38bdf8" style={{ marginRight: 4 }} />
-              <Text style={styles.zoomPercentText}>
-                OSM · {zoomLevel <= 0.55 ? 'Région' : zoomLevel <= 1.1 ? 'Agglo' : 'Focus'}
-              </Text>
-            </View>
-
-            {/* Floating Navigation App Button on Map */}
-            <TouchableOpacity
-              activeOpacity={0.85}
-              style={styles.floatingNavBtn}
-              onPress={() => openDirections(selectedClub)}
-            >
-              <Navigation
-                size={14}
-                color="#38bdf8"
-                strokeWidth={2.4}
-                style={{ marginRight: 6 }}
-              />
-              <Text style={styles.floatingNavBtnText}>
-                Ouvrir dans Maps
-              </Text>
-              <ExternalLink
-                size={12}
-                color="#93c5fd"
-                style={{ marginLeft: 5 }}
-              />
-            </TouchableOpacity>
-
-            {/* Map Action Controls (GPS Nav Shortcut, Recenter & Zoom In/Out) */}
-            <View style={styles.mapControlsRight}>
-              <TouchableOpacity
-                activeOpacity={0.8}
-                style={[styles.mapCtrlBtn, styles.mapNavShortcutBtn]}
-                onPress={() => openDirections(selectedClub)}
-                accessibilityLabel="Ouvrir dans l'application GPS"
-              >
-                <Navigation size={17} color="#ffffff" strokeWidth={2.4} />
-              </TouchableOpacity>
-
-              <TouchableOpacity
-                activeOpacity={0.8}
-                style={styles.mapCtrlBtn}
-                onPress={() => {
-                  setSelectedClub(clubs[0]);
-                  setZoomLevel(0.85);
-                }}
-              >
-                <LocateFixed size={18} color="#38bdf8" />
-              </TouchableOpacity>
-
-              <View style={styles.zoomControlsBox}>
-                <TouchableOpacity
-                  activeOpacity={0.7}
-                  style={styles.zoomBtn}
-                  onPress={() => handleZoom(1)}
-                >
-                  <Plus size={16} color="#cbd5e1" strokeWidth={2.5} />
-                </TouchableOpacity>
-                <View style={styles.zoomDivider} />
-                <TouchableOpacity
-                  activeOpacity={0.7}
-                  style={styles.zoomBtn}
-                  onPress={() => handleZoom(-1)}
-                >
-                  <Minus size={16} color="#cbd5e1" strokeWidth={2.5} />
-                </TouchableOpacity>
-              </View>
-            </View>
-          </View>
-
-          {/* QUICK PADEL CLUB CHIPS CAROUSEL */}
-          <ScrollView
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            contentContainerStyle={styles.quickClubScroll}
-          >
-            {clubs.map((club, idx) => {
-              const isSelected = selectedClub.id === club.id;
-              return (
-                <TouchableOpacity
-                  key={club.id}
-                  activeOpacity={0.8}
-                  style={[
-                    styles.quickClubChip,
-                    isSelected && styles.quickClubChipActive,
-                  ]}
-                  onPress={() => {
-                    setSelectedClub(club);
-                    setZoomLevel(1.4);
-                  }}
-                >
-                  <View
-                    style={[
-                      styles.quickClubPinBadge,
-                      isSelected && styles.quickClubPinBadgeActive,
-                    ]}
-                  >
-                    <Text
-                      style={[
-                        styles.quickClubPinText,
-                        isSelected && styles.quickClubPinTextActive,
-                      ]}
-                    >
-                      {idx + 1}
+            {selectedItem.type === 'coach' && (
+              <>
+                <View style={[styles.drawerAvatarBox, { backgroundColor: '#f97316' }]}>
+                  <GraduationCap size={20} color="#ffffff" />
+                </View>
+                <View style={{ flex: 1, marginLeft: 12 }}>
+                  <View style={styles.drawerTitleRow}>
+                    <Text style={styles.drawerName}>
+                      Coach {selectedItem.data.name} {selectedItem.data.last_name || ''}
                     </Text>
+                    <View style={[styles.drawerLevelBadge, { backgroundColor: 'rgba(249,115,22,0.2)' }]}>
+                      <Text style={[styles.drawerLevelText, { color: '#f97316' }]}>
+                        {selectedItem.data.hourly_rate ? `${selectedItem.data.hourly_rate} €/h` : 'Pro'}
+                      </Text>
+                    </View>
                   </View>
-                  <Text
-                    style={[
-                      styles.quickClubChipText,
-                      isSelected && styles.quickClubChipTextActive,
-                    ]}
-                    numberOfLines={1}
-                  >
-                    {club.name
-                      .replace('Tennis Padel Club ', '')
-                      .replace('Padel Club ', '')
-                      .replace('Padel ', '')}
+                  <Text style={styles.drawerSub}>📍 {selectedItem.data.city}</Text>
+                  {selectedItem.data.specialties && (
+                    <Text style={styles.drawerClubs}>
+                      {selectedItem.data.specialties.join(' · ')}
+                    </Text>
+                  )}
+                </View>
+              </>
+            )}
+
+            {selectedItem.type === 'club' && (
+              <>
+                <View style={[styles.drawerAvatarBox, { backgroundColor: '#10b981' }]}>
+                  <MapPin size={20} color="#ffffff" />
+                </View>
+                <View style={{ flex: 1, marginLeft: 12 }}>
+                  <View style={styles.drawerTitleRow}>
+                    <Text style={styles.drawerName}>{selectedItem.data.name}</Text>
+                    {selectedItem.data.nb_courts && (
+                      <View style={[styles.drawerLevelBadge, { backgroundColor: 'rgba(16,185,129,0.2)' }]}>
+                        <Text style={[styles.drawerLevelText, { color: '#10b981' }]}>
+                          {selectedItem.data.nb_courts} pistes
+                        </Text>
+                      </View>
+                    )}
+                  </View>
+                  <Text style={styles.drawerSub}>
+                    {selectedItem.data.address || selectedItem.data.city}
                   </Text>
-                  <Text style={styles.quickClubDistText}>{club.distance}</Text>
+                </View>
+              </>
+            )}
+          </View>
+
+          {/* Drawer Actions */}
+          <View style={styles.drawerActionsRow}>
+            {selectedItem.type === 'club' ? (
+              <>
+                <TouchableOpacity
+                  activeOpacity={0.8}
+                  style={styles.actionBtnPrimary}
+                  onPress={() =>
+                    openNavigation(
+                      selectedItem.data.lat,
+                      selectedItem.data.lng,
+                      selectedItem.data.name
+                    )
+                  }
+                >
+                  <Navigation size={15} color="#ffffff" style={{ marginRight: 6 }} />
+                  <Text style={styles.actionBtnText}>Itinéraire GPS</Text>
                 </TouchableOpacity>
-              );
-            })}
-          </ScrollView>
-        </View>
 
-        {/* SELECTED CLUB HERO CARD (PREVIEW) */}
-        <View style={styles.selectedHeroCard}>
-          {/* Court Photo Header */}
-          <View style={styles.cardImageContainer}>
-            <Image
-              source={selectedClub.image}
-              style={styles.cardCoverImg}
-              resizeMode="cover"
-              fadeDuration={0}
-            />
-            {/* Live Status Badge */}
-            <View style={styles.openPistesBadge}>
-              <View style={styles.greenLiveDot} />
-              <Text style={styles.openPistesText}>
-                {selectedClub.matchesCount} parties ouvertes
-              </Text>
-            </View>
-
-            {/* Club Rating Badge */}
-            <View style={styles.googleRatingBadge}>
-              <Star
-                size={13}
-                color="#facc15"
-                fill="#facc15"
-                style={{ marginRight: 4 }}
-              />
-              <Text style={styles.ratingNumber}>{selectedClub.rating}</Text>
-              <Text style={styles.ratingCount}>({selectedClub.reviews})</Text>
-            </View>
-          </View>
-
-          {/* Card Body */}
-          <View style={styles.heroCardBody}>
-            <View style={styles.heroNameRow}>
-              <View style={{ flex: 1, paddingRight: 8 }}>
-                <Text style={styles.heroTitle}>{selectedClub.name}</Text>
-                <Text style={styles.heroCity}>{selectedClub.city}</Text>
-              </View>
-
-              {/* Distance & ETA Chip */}
-              <View style={styles.etaChip}>
-                <Car size={13} color="#38bdf8" style={{ marginRight: 4 }} />
-                <Text style={styles.etaChipText}>{selectedClub.eta}</Text>
-                <Text style={styles.etaChipSub}>({selectedClub.distance})</Text>
-              </View>
-            </View>
-
-            <Text style={styles.heroAddress} numberOfLines={1}>
-              📍 {selectedClub.address}
-            </Text>
-
-            {/* Action Buttons: Itinéraire GPS + Voir les parties */}
-            <View style={styles.heroActionsRow}>
-              {/* Route Button */}
+                {selectedItem.data.phone && (
+                  <TouchableOpacity
+                    activeOpacity={0.8}
+                    style={styles.actionBtnSecondary}
+                    onPress={() => Linking.openURL(`tel:${selectedItem.data.phone}`)}
+                  >
+                    <Phone size={15} color="#38bdf8" style={{ marginRight: 6 }} />
+                    <Text style={styles.actionBtnSecondaryText}>Appeler</Text>
+                  </TouchableOpacity>
+                )}
+              </>
+            ) : selectedItem.type === 'coach' ? (
               <TouchableOpacity
                 activeOpacity={0.8}
-                style={styles.directionsBtn}
-                onPress={() => openDirections(selectedClub)}
-              >
-                <Navigation
-                  size={16}
-                  color="#ffffff"
-                  strokeWidth={2.4}
-                  style={{ marginRight: 7 }}
-                />
-                <Text style={styles.directionsBtnText}>Itinéraire GPS</Text>
-                <ExternalLink
-                  size={13}
-                  color="#93c5fd"
-                  style={{ marginLeft: 6 }}
-                />
-              </TouchableOpacity>
-
-              {/* View Matches Button */}
-              <TouchableOpacity
-                activeOpacity={0.8}
-                style={styles.openMatchesBtn}
-                onPress={onOpenMatches}
-              >
-                <CalendarDays
-                  size={16}
-                  color="#0f172a"
-                  strokeWidth={2.4}
-                  style={{ marginRight: 6 }}
-                />
-                <Text style={styles.openMatchesBtnText}>
-                  Parties ({selectedClub.matchesCount})
-                </Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-        </View>
-
-        {/* ALL CLUBS LIST SECTION */}
-        <View style={styles.allClubsSection}>
-          <Text style={styles.sectionHeaderTitle}>
-            Clubs de padel dans la région ({clubs.length})
-          </Text>
-
-          {clubs.map((club, i) => {
-            const isSelected = selectedClub.id === club.id;
-            return (
-              <TouchableOpacity
-                key={club.id}
-                activeOpacity={0.8}
-                style={[
-                  styles.clubListItem,
-                  isSelected && styles.clubListItemSelected,
-                ]}
+                style={[styles.actionBtnPrimary, { backgroundColor: '#f97316' }]}
                 onPress={() => {
-                  setSelectedClub(club);
-                  setZoomLevel(1.4);
+                  onBookCoach?.();
+                  Alert.alert('Réservation Coach', `Prise de contact avec Coach ${selectedItem.data.name} initiée !`);
                 }}
               >
-                {/* Index badge */}
-                <View
-                  style={[
-                    styles.indexCircle,
-                    isSelected && { backgroundColor: '#0284c7' },
-                  ]}
-                >
-                  <Text style={styles.indexCircleText}>{i + 1}</Text>
-                </View>
-
-                {/* Info */}
-                <View style={{ flex: 1, paddingRight: 8 }}>
-                  <Text style={styles.clubListTitle}>{club.name}</Text>
-                  <Text style={styles.clubListSub}>
-                    {club.distance} · {club.courtsCount} pistes · {club.eta}
-                  </Text>
-                </View>
-
-                {/* Rating & Route Button */}
-                <View style={styles.clubListRight}>
-                  <View style={styles.miniRatingRow}>
-                    <Star size={12} color="#facc15" fill="#facc15" />
-                    <Text style={styles.miniRatingText}>{club.rating}</Text>
-                  </View>
-
-                  <TouchableOpacity
-                    activeOpacity={0.7}
-                    style={styles.miniNavBtn}
-                    onPress={() => openDirections(club)}
-                  >
-                    <Navigation size={13} color="#38bdf8" />
-                  </TouchableOpacity>
-                </View>
+                <GraduationCap size={15} color="#ffffff" style={{ marginRight: 6 }} />
+                <Text style={styles.actionBtnText}>Réserver un cours</Text>
               </TouchableOpacity>
-            );
-          })}
+            ) : (
+              <TouchableOpacity
+                activeOpacity={0.8}
+                style={styles.actionBtnPrimary}
+                onPress={() =>
+                  Alert.alert(
+                    'Invitation Smashly',
+                    `Demande de match envoyée à ${selectedItem.data.name} !`
+                  )
+                }
+              >
+                <Users2 size={15} color="#ffffff" style={{ marginRight: 6 }} />
+                <Text style={styles.actionBtnText}>Inviter à jouer</Text>
+              </TouchableOpacity>
+            )}
+          </View>
         </View>
-      </ScrollView>
+      )}
     </View>
   );
 });
-
-MapScreen.displayName = 'MapScreen';
 
 const styles = StyleSheet.create({
   container: {
@@ -1054,10 +818,11 @@ const styles = StyleSheet.create({
   },
   header: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
     alignItems: 'center',
-    paddingHorizontal: 18,
-    paddingBottom: 12,
+    justifyContent: 'space-between',
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    backgroundColor: '#0f172a',
     borderBottomWidth: 1,
     borderBottomColor: '#1e293b',
   },
@@ -1069,519 +834,261 @@ const styles = StyleSheet.create({
     width: 38,
     height: 38,
     borderRadius: 12,
-    backgroundColor: colors.blue500,
+    backgroundColor: '#2563eb',
     alignItems: 'center',
     justifyContent: 'center',
     marginRight: 10,
-    shadowColor: colors.blue500,
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.35,
-    shadowRadius: 8,
-    elevation: 4,
   },
   headerTitle: {
-    fontSize: 20,
+    color: '#ffffff',
+    fontSize: 16,
     fontWeight: '800',
-    color: '#f8fafc',
-    letterSpacing: -0.3,
   },
   headerSubtitle: {
-    fontSize: 12,
     color: '#94a3b8',
+    fontSize: 11,
     marginTop: 1,
   },
-  backBtn: {
-    padding: 8,
-  },
-  scroll: {
-    flex: 1,
-    paddingTop: 14,
-  },
-  mapCardContainer: {
-    backgroundColor: '#0f172a',
-    borderRadius: 22,
-    borderWidth: 1,
-    borderColor: '#334155',
-    overflow: 'hidden',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.45,
-    shadowRadius: 14,
-    elevation: 8,
-    marginBottom: 16,
-  },
-  mapTopControls: {
-    paddingHorizontal: 10,
-    paddingVertical: 10,
-    borderBottomWidth: 1,
-    borderBottomColor: '#1e293b',
-    gap: 8,
-  },
-  mapControlsHeaderRow: {
+  headerRightActions: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
     alignItems: 'center',
     gap: 8,
   },
-  locationPill: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#1e293b',
-    borderRadius: 999,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    marginRight: 6,
-  },
-  liveGpsDot: {
-    width: 7,
-    height: 7,
-    borderRadius: 3.5,
-    backgroundColor: '#38bdf8',
-    marginRight: 6,
-  },
-  locationPillText: {
-    color: '#e2e8f0',
-    fontSize: 11.5,
-    fontWeight: '600',
-  },
-  zoomPresetRow: {
-    flexDirection: 'row',
-    backgroundColor: '#1e293b',
-    borderRadius: 8,
-    padding: 3,
-    gap: 4,
-    width: '100%',
-  },
-  presetBtn: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: 6,
-    borderRadius: 6,
-  },
-  presetBtnActive: {
-    backgroundColor: '#0284c7',
-  },
-  presetBtnText: {
-    color: '#94a3b8',
-    fontSize: 11.5,
-    fontWeight: '600',
-  },
-  presetBtnTextActive: {
-    color: '#ffffff',
-    fontWeight: '700',
-  },
-  layerSwitchRow: {
-    flexDirection: 'row',
-    backgroundColor: '#1e293b',
-    borderRadius: 8,
-    padding: 2,
-  },
-  layerBtn: {
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 6,
-  },
-  layerBtnActive: {
-    backgroundColor: colors.blue500,
-  },
-  layerBtnText: {
-    color: '#94a3b8',
-    fontSize: 11,
-    fontWeight: '600',
-  },
-  layerBtnTextActive: {
-    color: '#ffffff',
-    fontWeight: '700',
-  },
-  mapCanvasWrapper: {
-    position: 'relative',
-    height: 310,
-    backgroundColor: '#0f172a',
-  },
-  mapWebView: {
-    width: '100%',
-    height: '100%',
-    backgroundColor: '#0f172a',
-  },
-  mapWebViewContainer: {
-    width: '100%',
-    height: '100%',
-  },
-  quickClubScroll: {
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    gap: 8,
-    backgroundColor: '#0a0f1d',
-    borderTopWidth: 1,
-    borderTopColor: '#1e293b',
-  },
-  quickClubChip: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#1e293b',
-    borderRadius: 999,
-    paddingVertical: 6,
-    paddingHorizontal: 10,
-    borderWidth: 1,
-    borderColor: '#334155',
-    gap: 6,
-  },
-  quickClubChipActive: {
-    backgroundColor: '#0284c7',
-    borderColor: '#38bdf8',
-  },
-  quickClubPinBadge: {
-    width: 18,
-    height: 18,
-    borderRadius: 9,
-    backgroundColor: '#ef4444',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  quickClubPinBadgeActive: {
-    backgroundColor: '#ffffff',
-  },
-  quickClubPinText: {
-    color: '#ffffff',
-    fontSize: 10,
-    fontWeight: '800',
-  },
-  quickClubPinTextActive: {
-    color: '#0284c7',
-  },
-  quickClubChipText: {
-    color: '#cbd5e1',
-    fontSize: 12,
-    fontWeight: '600',
-    maxWidth: 120,
-  },
-  quickClubChipTextActive: {
-    color: '#ffffff',
-    fontWeight: '700',
-  },
-  quickClubDistText: {
-    color: '#94a3b8',
-    fontSize: 11,
-    fontWeight: '500',
-  },
-  zoomPercentBadge: {
-    position: 'absolute',
-    top: 10,
-    left: 10,
-    backgroundColor: 'rgba(15, 23, 42, 0.9)',
-    borderRadius: 6,
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderWidth: 1,
-    borderColor: '#334155',
-    flexDirection: 'row',
-    alignItems: 'center',
-    zIndex: 40,
-  },
-  zoomPercentText: {
-    color: '#38bdf8',
-    fontSize: 11,
-    fontWeight: '700',
-  },
-  floatingNavBtn: {
-    position: 'absolute',
-    bottom: 10,
-    left: 10,
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: 'rgba(15, 23, 42, 0.92)',
-    borderRadius: 20,
-    paddingHorizontal: 12,
-    paddingVertical: 7,
-    borderWidth: 1.5,
-    borderColor: '#38bdf8',
-    shadowColor: '#0284c7',
-    shadowOffset: { width: 0, height: 3 },
-    shadowOpacity: 0.35,
-    shadowRadius: 6,
-    elevation: 5,
-    zIndex: 50,
-  },
-  floatingNavBtnText: {
-    color: '#ffffff',
-    fontSize: 12,
-    fontWeight: '700',
-    letterSpacing: 0.2,
-  },
-  mapNavShortcutBtn: {
-    backgroundColor: '#0284c7',
-    borderColor: '#38bdf8',
-    shadowColor: '#0284c7',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.35,
-    shadowRadius: 4,
-    elevation: 3,
-  },
-  mapControlsRight: {
-    position: 'absolute',
-    top: 10,
-    right: 10,
-    gap: 8,
-  },
-  mapCtrlBtn: {
+  refreshBtn: {
     width: 36,
     height: 36,
     borderRadius: 18,
-    backgroundColor: 'rgba(15, 23, 42, 0.88)',
-    borderWidth: 1,
-    borderColor: '#334155',
+    backgroundColor: '#1e293b',
+    alignItems: 'center',
     justifyContent: 'center',
-    alignItems: 'center',
   },
-  zoomControlsBox: {
-    backgroundColor: 'rgba(15, 23, 42, 0.88)',
-    borderRadius: 18,
-    borderWidth: 1,
-    borderColor: '#334155',
-    alignItems: 'center',
-    overflow: 'hidden',
-  },
-  zoomBtn: {
+  backBtn: {
     width: 36,
-    height: 32,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: '#1e293b',
+    alignItems: 'center',
     justifyContent: 'center',
-    alignItems: 'center',
   },
-  zoomDivider: {
-    width: 24,
-    height: 1,
-    backgroundColor: '#334155',
-  },
-  selectedHeroCard: {
+  searchBarWrapper: {
+    paddingHorizontal: 14,
+    paddingVertical: 8,
     backgroundColor: '#0f172a',
-    borderRadius: 20,
-    borderWidth: 1,
-    borderColor: '#38bdf8',
-    overflow: 'hidden',
-    shadowColor: '#0284c7',
-    shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.35,
-    shadowRadius: 14,
-    elevation: 8,
-    marginBottom: 20,
   },
-  cardImageContainer: {
-    height: 135,
-    width: '100%',
-    position: 'relative',
-  },
-  cardCoverImg: {
-    width: '100%',
-    height: '100%',
-  },
-  openPistesBadge: {
-    position: 'absolute',
-    top: 10,
-    left: 10,
+  searchInner: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: 'rgba(15, 23, 42, 0.85)',
-    borderRadius: 999,
-    paddingHorizontal: 10,
-    paddingVertical: 5,
-    borderWidth: 1,
-    borderColor: 'rgba(34, 197, 94, 0.4)',
-  },
-  greenLiveDot: {
-    width: 6,
-    height: 6,
-    borderRadius: 3,
-    backgroundColor: '#22c55e',
-    marginRight: 6,
-  },
-  openPistesText: {
-    color: '#f8fafc',
-    fontSize: 11.5,
-    fontWeight: '700',
-  },
-  googleRatingBadge: {
-    position: 'absolute',
-    bottom: 10,
-    right: 10,
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: 'rgba(15, 23, 42, 0.85)',
-    borderRadius: 999,
-    paddingHorizontal: 8,
+    backgroundColor: '#1e293b',
+    borderRadius: 12,
+    paddingHorizontal: 12,
     paddingVertical: 4,
     borderWidth: 1,
     borderColor: '#334155',
   },
-  ratingNumber: {
-    color: '#ffffff',
-    fontSize: 12,
-    fontWeight: '700',
-  },
-  ratingCount: {
-    color: '#94a3b8',
-    fontSize: 11,
-    marginLeft: 3,
-  },
-  heroCardBody: {
-    padding: 16,
-  },
-  heroNameRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'flex-start',
-  },
-  heroTitle: {
-    fontSize: 17,
-    fontWeight: '800',
-    color: '#ffffff',
-  },
-  heroCity: {
-    fontSize: 13,
-    color: '#94a3b8',
-    marginTop: 2,
-  },
-  etaChip: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: 'rgba(56, 189, 248, 0.12)',
-    borderRadius: 8,
-    paddingHorizontal: 8,
-    paddingVertical: 5,
-    borderWidth: 1,
-    borderColor: 'rgba(56, 189, 248, 0.25)',
-  },
-  etaChipText: {
-    color: '#38bdf8',
-    fontSize: 12,
-    fontWeight: '700',
-  },
-  etaChipSub: {
-    color: '#94a3b8',
-    fontSize: 11,
-    marginLeft: 3,
-  },
-  heroAddress: {
-    fontSize: 12,
-    color: '#64748b',
-    marginTop: 8,
-    marginBottom: 14,
-  },
-  heroActionsRow: {
-    flexDirection: 'row',
-    gap: 10,
-  },
-  directionsBtn: {
-    flex: 1.4,
-    backgroundColor: colors.blue500,
-    borderRadius: 12,
-    paddingVertical: 12,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    shadowColor: colors.blue500,
-    shadowOffset: { width: 0, height: 3 },
-    shadowOpacity: 0.35,
-    shadowRadius: 6,
-    elevation: 4,
-  },
-  directionsBtnText: {
-    color: '#ffffff',
-    fontSize: 13.5,
-    fontWeight: '700',
-  },
-  openMatchesBtn: {
+  searchInput: {
     flex: 1,
-    backgroundColor: colors.yellow400,
-    borderRadius: 12,
-    paddingVertical: 12,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    shadowColor: colors.yellow400,
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.35,
-    shadowRadius: 5,
-    elevation: 3,
-  },
-  openMatchesBtnText: {
-    color: '#0f172a',
+    color: '#ffffff',
     fontSize: 13,
-    fontWeight: '800',
+    paddingVertical: 6,
   },
-  allClubsSection: {
-    marginTop: 8,
+  searchClearBtn: {
+    padding: 4,
+    marginLeft: 6,
   },
-  sectionHeaderTitle: {
-    fontSize: 14,
-    fontWeight: '800',
-    color: '#94a3b8',
-    textTransform: 'uppercase',
-    letterSpacing: 0.6,
-    marginBottom: 12,
-  },
-  clubListItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
+  filterTabsContainer: {
     backgroundColor: '#0f172a',
-    borderRadius: 14,
-    padding: 12,
-    borderWidth: 1,
-    borderColor: '#1e293b',
-    marginBottom: 10,
+    paddingBottom: 8,
   },
-  clubListItemSelected: {
-    borderColor: '#38bdf8',
-    backgroundColor: '#131d35',
+  filterTabsRow: {
+    flexDirection: 'row',
+    paddingHorizontal: 14,
+    gap: 8,
   },
-  indexCircle: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
-    backgroundColor: '#ef4444',
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginRight: 10,
-  },
-  indexCircleText: {
-    color: '#ffffff',
-    fontSize: 12,
-    fontWeight: 'bold',
-  },
-  clubListTitle: {
-    fontSize: 14.5,
-    fontWeight: '700',
-    color: '#ffffff',
-  },
-  clubListSub: {
-    fontSize: 12,
-    color: '#94a3b8',
-    marginTop: 2,
-  },
-  clubListRight: {
-    alignItems: 'flex-end',
-    gap: 6,
-  },
-  miniRatingRow: {
+  filterChip: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 3,
-  },
-  miniRatingText: {
-    color: '#ffffff',
-    fontSize: 12,
-    fontWeight: '700',
-  },
-  miniNavBtn: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 10,
     backgroundColor: '#1e293b',
-    justifyContent: 'center',
-    alignItems: 'center',
     borderWidth: 1,
     borderColor: '#334155',
+  },
+  filterChipActiveAll: {
+    backgroundColor: '#38bdf8',
+    borderColor: '#7dd3fc',
+  },
+  filterChipActivePlayers: {
+    backgroundColor: '#2563eb',
+    borderColor: '#60a5fa',
+  },
+  filterChipActiveCoaches: {
+    backgroundColor: '#f97316',
+    borderColor: '#fdba74',
+  },
+  filterChipActiveClubs: {
+    backgroundColor: '#10b981',
+    borderColor: '#6ee7b7',
+  },
+  filterChipText: {
+    color: '#94a3b8',
+    fontSize: 11.5,
+    fontWeight: '700',
+  },
+  filterChipTextActive: {
+    color: '#ffffff',
+  },
+  mapContainer: {
+    flex: 1,
+    backgroundColor: '#0f172a',
+  },
+  webView: {
+    flex: 1,
+    backgroundColor: '#0f172a',
+  },
+  detailDrawer: {
+    position: 'absolute',
+    left: 14,
+    right: 14,
+    backgroundColor: '#0f172a',
+    borderRadius: 22,
+    borderWidth: 1.5,
+    borderColor: 'rgba(56, 189, 248, 0.45)',
+    paddingHorizontal: 16,
+    paddingTop: 8,
+    paddingBottom: 14,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.55,
+    shadowRadius: 18,
+    elevation: 24,
+    zIndex: 1000,
+  },
+  drawerTopBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    position: 'relative',
+    height: 18,
+    marginBottom: 6,
+  },
+  drawerHandle: {
+    width: 38,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: '#475569',
+  },
+  drawerCloseBtn: {
+    position: 'absolute',
+    right: -4,
+    top: -2,
+    width: 26,
+    height: 26,
+    borderRadius: 13,
+    backgroundColor: '#1e293b',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  drawerContentRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  drawerAvatarBox: {
+    width: 44,
+    height: 44,
+    borderRadius: 14,
+    backgroundColor: '#2563eb',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  drawerAvatarText: {
+    color: '#ffffff',
+    fontSize: 17,
+    fontWeight: '800',
+  },
+  drawerTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  drawerName: {
+    color: '#ffffff',
+    fontSize: 15,
+    fontWeight: '800',
+    flex: 1,
+  },
+  drawerLevelBadge: {
+    backgroundColor: 'rgba(56, 189, 248, 0.2)',
+    paddingHorizontal: 7,
+    paddingVertical: 2,
+    borderRadius: 6,
+  },
+  drawerLevelText: {
+    color: '#38bdf8',
+    fontSize: 11,
+    fontWeight: '700',
+  },
+  drawerSub: {
+    color: '#94a3b8',
+    fontSize: 12,
+    marginTop: 2,
+  },
+  drawerClubs: {
+    color: '#cbd5e1',
+    fontSize: 11.5,
+    marginTop: 3,
+  },
+  drawerActionsRow: {
+    flexDirection: 'row',
+    gap: 10,
+    marginTop: 12,
+  },
+  actionBtnPrimary: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#2563eb',
+    borderRadius: 12,
+    paddingVertical: 10,
+  },
+  actionBtnText: {
+    color: '#ffffff',
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  actionBtnSecondary: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(56, 189, 248, 0.12)',
+    borderWidth: 1,
+    borderColor: 'rgba(56, 189, 248, 0.3)',
+    borderRadius: 12,
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+  },
+  actionBtnSecondaryText: {
+    color: '#38bdf8',
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  recenterFab: {
+    position: 'absolute',
+    top: 14,
+    right: 14,
+    width: 42,
+    height: 42,
+    borderRadius: 21,
+    backgroundColor: 'rgba(15, 23, 42, 0.85)',
+    borderWidth: 1.5,
+    borderColor: '#38bdf8',
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.4,
+    shadowRadius: 6,
+    elevation: 8,
   },
 });

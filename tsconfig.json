@@ -13,6 +13,9 @@
     "esModuleInterop": true,
     "skipLibCheck": true,
     "resolveJsonModule": true,
+    "types": [
+      "bun"
+    ],
     "noEmit": true
   },
   "include": [

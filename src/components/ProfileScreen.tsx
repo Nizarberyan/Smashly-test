@@ -25,11 +25,19 @@ import {
   MapPin,
   Pencil,
   CalendarDays,
+  LogIn,
+  CheckCircle2,
+  Zap,
+  ShieldCheck,
+  Camera,
 } from 'lucide-react-native';
 
 import { WhatsAppIcon } from './WhatsAppIcon';
 import { SmashlyCardModal } from './SmashlyCardModal';
 import { SettingsModal, SettingsTab } from './SettingsModal';
+import { AuthModal } from './AuthModal';
+import { useMatches } from '../context/MatchesContext';
+import { formatMatchDateTime } from '../services/matchRules';
 
 interface ProfileScreenProps {
   onGoHome?: () => void;
@@ -37,6 +45,7 @@ interface ProfileScreenProps {
   onBookCoach?: () => void;
   isDarkMode?: boolean;
   onToggleDarkMode?: (value: boolean) => void;
+  onOpenAuth?: () => void;
 }
 
 export const ProfileScreen: React.FC<ProfileScreenProps> = ({
@@ -45,27 +54,73 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({
   onBookCoach,
   isDarkMode = true,
   onToggleDarkMode,
+  onOpenAuth,
 }) => {
   const insets = useSafeAreaInsets();
   const { panHandlers } = useSwipeable();
+  const {
+    currentUser,
+    subscription,
+    coachProfile,
+    updateCurrentUser,
+    logout,
+    matches,
+    isLiveApiConnected,
+    isAuthenticated,
+    loadJulienProfile,
+    loadNizarProfile,
+    loading,
+  } = useMatches();
 
   // Modals state
   const [showCardModal, setShowCardModal] = useState(false);
   const [showSettingsModal, setShowSettingsModal] = useState(false);
+  const [showAuthModal, setShowAuthModal] = useState(false);
   const [settingsInitialTab, setSettingsInitialTab] = useState<SettingsTab>('general');
 
-  // Profile data
-  const [profile, setProfile] = useState({
-    firstName: 'Nizar',
-    lastName: 'Beriane',
-    bio: 'Padel enthusiast for 2 years, looking for partners to improve together!',
-    whatsapp: '+448475136...',
-    city: 'Marseille',
-    position: 'Not specified',
-    favouriteClubs: 'No clubs provided',
-    level: 1,
-    progress: '0% → N2',
-  });
+  const openAuth = () => {
+    if (onOpenAuth) {
+      onOpenAuth();
+    } else {
+      setShowAuthModal(true);
+    }
+  };
+
+  // Dynamic user data
+  const firstName = currentUser.first_name || (isLiveApiConnected ? 'Nizar' : 'Julien');
+  const lastName = currentUser.last_name || (isLiveApiConnected ? 'Beriane' : 'Dubois');
+  const fullName = `${firstName} ${lastName}`.trim();
+  const initials = ((firstName[0] || 'N') + (lastName[0] || 'B')).toUpperCase();
+  const level = currentUser.level ?? (isLiveApiConnected ? 1 : 7);
+  const isJulien = firstName.toLowerCase() === 'julien';
+  const bio =
+    currentUser.bio && currentUser.bio.trim() !== ''
+      ? currentUser.bio
+      : isLiveApiConnected
+      ? 'Padel enthusiast for 2 years, looking for partners to improve together!'
+      : 'Joueur de padel passionné (Niveau 7).';
+  const whatsapp = currentUser.phone || '+448475136528';
+  const city = currentUser.city || 'Marseille';
+  const position =
+    currentUser.position && currentUser.position.trim() !== '' && currentUser.position !== 'Non spécifié'
+      ? currentUser.position
+      : '';
+  const favouriteClubs =
+    currentUser.favouriteClubs &&
+    currentUser.favouriteClubs.trim() !== '' &&
+    currentUser.favouriteClubs !== 'Aucun club configuré'
+      ? currentUser.favouriteClubs
+      : '';
+  const progressPercent = Math.min(100, Math.round((level / 8) * 100));
+
+  // Find matches where user is enrolled
+  const myMatches = matches.filter((m) =>
+    m.players.some(
+      (p) =>
+        p.user_id === currentUser.user_id ||
+        p.first_name.toLowerCase() === firstName.toLowerCase()
+    )
+  );
 
   const handleOpenSettings = (tab: SettingsTab = 'general') => {
     setSettingsInitialTab(tab);
@@ -86,7 +141,14 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({
   const handleLogOut = () => {
     Alert.alert('Déconnexion', 'Voulez-vous vraiment vous déconnecter de votre compte ?', [
       { text: 'Annuler', style: 'cancel' },
-      { text: 'Se déconnecter', style: 'destructive', onPress: onGoHome },
+      {
+        text: 'Se déconnecter',
+        style: 'destructive',
+        onPress: () => {
+          logout();
+          openAuth();
+        },
+      },
     ]);
   };
 
@@ -158,7 +220,7 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({
         showsVerticalScrollIndicator={false}
         removeClippedSubviews={Platform.OS === 'android'}
       >
-        {/* TOP ACTION BUTTONS ROW (Horizontal bar at top above profile card) */}
+        {/* TOP ACTION BUTTONS ROW */}
         <View style={styles.topActionRail}>
           {/* 1. Clock / Matches */}
           <TouchableOpacity
@@ -202,7 +264,48 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({
           </TouchableOpacity>
         </View>
 
-        {/* Main Profile Card with Neon Glowing Gradient Rim (FULL COMFORTABLE WIDTH) */}
+        {/* Persona Quick Switcher: Julien Test Spec vs Live Smashly Account */}
+        <View style={styles.personaSwitchRow}>
+          <TouchableOpacity
+            activeOpacity={0.8}
+            style={[
+              styles.personaTabBtn,
+              !isLiveApiConnected ? styles.personaTabBtnActiveJulien : styles.personaTabBtnInactive,
+            ]}
+            onPress={loadJulienProfile}
+          >
+            <Zap size={14} color={!isLiveApiConnected ? '#ffffff' : '#94a3b8'} style={{ marginRight: 5 }} />
+            <Text
+              style={[
+                styles.personaTabText,
+                !isLiveApiConnected ? styles.personaTabTextActive : styles.personaTabTextInactive,
+              ]}
+            >
+              ⚡ Julien (Test Niv. 7)
+            </Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            activeOpacity={0.8}
+            style={[
+              styles.personaTabBtn,
+              isLiveApiConnected ? styles.personaTabBtnActiveNizar : styles.personaTabBtnInactive,
+            ]}
+            onPress={loadNizarProfile}
+          >
+            <ShieldCheck size={14} color={isLiveApiConnected ? '#ffffff' : '#94a3b8'} style={{ marginRight: 5 }} />
+            <Text
+              style={[
+                styles.personaTabText,
+                isLiveApiConnected ? styles.personaTabTextActive : styles.personaTabTextInactive,
+              ]}
+            >
+              🎾 Smashly (Nizar)
+            </Text>
+          </TouchableOpacity>
+        </View>
+
+        {/* Main Profile Card with Neon Glowing Gradient Rim */}
         <View style={styles.cardWrapper}>
           <LinearGradient
             colors={['#c084fc', '#38bdf8', '#818cf8', '#f472b6']}
@@ -211,19 +314,66 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({
             style={styles.cardGradientBorder}
           >
             <View style={[styles.cardInner, isDarkMode && styles.cardInnerDark]}>
-              {/* Header Row: NB Avatar + Name + Level info */}
+              {/* Account Mode Pill: Test Spec vs Live Smashly Account */}
+              <TouchableOpacity
+                activeOpacity={0.8}
+                style={[
+                  styles.apiModeBanner,
+                  isLiveApiConnected ? styles.bannerLive : styles.bannerTest,
+                ]}
+                onPress={openAuth}
+              >
+                <View
+                  style={[
+                    styles.apiModeDot,
+                    isLiveApiConnected ? styles.dotGreen : styles.dotYellow,
+                  ]}
+                />
+                <Text
+                  style={[
+                    styles.apiModeText,
+                    isLiveApiConnected ? styles.textLive : styles.textTest,
+                  ]}
+                >
+                  {isLiveApiConnected
+                    ? `Compte Réel API (${fullName})`
+                    : 'Profil Sujet Test (Julien Niv. 7)'}
+                </Text>
+                <Text style={styles.apiModeSwitch}>Changer ▾</Text>
+              </TouchableOpacity>
+
+              {/* Header Row: Avatar + Name + Level info */}
               <View style={styles.profileHeaderRow}>
-                {/* Avatar NB with + Badge */}
-                <View style={styles.avatarContainer}>
-                  <View style={styles.avatarBox}>
-                    <Text style={styles.avatarInitials}>
-                      {((profile.firstName?.[0] || 'N') + (profile.lastName?.[0] || 'B')).toUpperCase()}
-                    </Text>
+                {/* Dynamic Avatar with Camera Edit Badge */}
+                <TouchableOpacity
+                  activeOpacity={0.8}
+                  style={styles.avatarContainer}
+                  onPress={() => handleOpenSettings('general')}
+                >
+                  <View
+                    style={[
+                      styles.avatarBox,
+                      isJulien && { borderColor: '#facc15', borderWidth: 2 },
+                    ]}
+                  >
+                    {currentUser.profile_picture_url ? (
+                      <Image
+                        source={{ uri: currentUser.profile_picture_url }}
+                        style={styles.avatarImg}
+                      />
+                    ) : isJulien ? (
+                      <Image
+                        source={require('../../images/avatar-julien.png')}
+                        style={styles.avatarImg}
+                      />
+                    ) : (
+                      <Text style={styles.avatarInitials}>{initials}</Text>
+                    )}
                   </View>
                   <View style={styles.avatarPlusBadge}>
-                    <Plus size={12} color="#ffffff" strokeWidth={3} />
+                    <Camera size={12} color="#ffffff" strokeWidth={2.5} />
                   </View>
-                </View>
+                </TouchableOpacity>
 
                 {/* Name and Level Progress */}
                 <View style={styles.profileNameCol}>
@@ -231,29 +381,46 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({
                     style={[styles.profileName, isDarkMode && styles.textWhite]}
                     numberOfLines={1}
                   >
-                    {profile.firstName} {profile.lastName}
+                    {fullName}
                   </Text>
 
                   <View style={styles.levelProgressRow}>
                     <View style={styles.levelPill}>
-                      <Text style={styles.levelPillText}>Level {profile.level}</Text>
+                      <Text style={styles.levelPillText}>Level {level}</Text>
                     </View>
 
                     <View style={[styles.progressPill, isDarkMode && styles.progressPillDark]}>
                       <View style={styles.progressBarTrack}>
-                        <View style={styles.progressBarFill} />
+                        <View style={[styles.progressBarFill, { width: `${progressPercent}%` }]} />
                       </View>
                       <Text style={[styles.progressText, isDarkMode && styles.textSlate400]}>
-                        {profile.progress}
+                        {level >= 8 ? 'Niveau Max' : `${progressPercent}% → N${level + 1}`}
                       </Text>
                     </View>
                   </View>
                 </View>
               </View>
 
+              {/* IA Subscription Banner (from real Smashly AI backend) */}
+              {subscription && (
+                <View style={[styles.subBanner, isDarkMode && styles.subBannerDark]}>
+                  <View style={styles.subBannerIcon}>
+                    <Zap size={13} color="#38bdf8" strokeWidth={2.5} />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={[styles.subBannerTitle, isDarkMode && styles.textWhite]}>
+                      Smashly IA • Plan {subscription.plan.toUpperCase()}
+                    </Text>
+                    <Text style={[styles.subBannerSubtitle, isDarkMode && styles.textSlate400]}>
+                      {subscription.tokens_used_today.toLocaleString()} / {subscription.daily_token_limit.toLocaleString()} tokens/j • Rayon {subscription.max_search_distance} km
+                    </Text>
+                  </View>
+                </View>
+              )}
+
               {/* Bio text */}
               <Text style={[styles.bioText, isDarkMode && styles.bioTextDark]}>
-                {profile.bio}
+                {bio}
               </Text>
 
               {/* 2-column info cards: Whatsapp & City */}
@@ -265,7 +432,7 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({
                     <Text style={[styles.badgeLabel, isDarkMode && styles.textWhite]}>Whatsapp</Text>
                   </View>
                   <Text style={[styles.badgeValue, isDarkMode && styles.textSlate300]} numberOfLines={1}>
-                    {profile.whatsapp}
+                    {whatsapp}
                   </Text>
                 </View>
 
@@ -276,7 +443,7 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({
                     <Text style={[styles.badgeLabel, isDarkMode && styles.textWhite]}>City</Text>
                   </View>
                   <Text style={[styles.badgeValue, isDarkMode && styles.textSlate300]} numberOfLines={1}>
-                    {profile.city}
+                    {city}
                   </Text>
                 </View>
               </View>
@@ -287,9 +454,33 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({
                   <Target size={17} color="#f97316" strokeWidth={2.4} />
                   <Text style={[styles.badgeLabel, isDarkMode && styles.textWhite]}>Position</Text>
                 </View>
-                <Text style={[styles.badgeValue, isDarkMode && styles.textSlate300]}>
-                  {profile.position}
-                </Text>
+                {position ? (
+                  <Text style={[styles.badgeValue, isDarkMode && styles.textSlate300]}>
+                    {position}
+                  </Text>
+                ) : (
+                  <View style={styles.inlineChoiceRow}>
+                    <Text style={[styles.emptyLabelText, isDarkMode && styles.textSlate400]}>
+                      Non renseignée
+                    </Text>
+                    <View style={styles.inlinePillsGroup}>
+                      <TouchableOpacity
+                        activeOpacity={0.7}
+                        style={styles.choicePill}
+                        onPress={() => updateCurrentUser({ position: 'Gauche' })}
+                      >
+                        <Text style={styles.choicePillText}>+ Gauche</Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        activeOpacity={0.7}
+                        style={styles.choicePill}
+                        onPress={() => updateCurrentUser({ position: 'Droite' })}
+                      >
+                        <Text style={styles.choicePillText}>+ Droite</Text>
+                      </TouchableOpacity>
+                    </View>
+                  </View>
+                )}
               </View>
 
               {/* Full-width card: Favourite Clubs */}
@@ -298,9 +489,24 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({
                   <MapPin size={17} color="#a855f7" strokeWidth={2.4} />
                   <Text style={[styles.badgeLabel, isDarkMode && styles.textWhite]}>Favourite Clubs</Text>
                 </View>
-                <Text style={[styles.badgeValue, isDarkMode && styles.textSlate300]}>
-                  {profile.favouriteClubs}
-                </Text>
+                {favouriteClubs ? (
+                  <Text style={[styles.badgeValue, isDarkMode && styles.textSlate300]}>
+                    {favouriteClubs}
+                  </Text>
+                ) : (
+                  <View style={styles.inlineChoiceRow}>
+                    <Text style={[styles.emptyLabelText, isDarkMode && styles.textSlate400]}>
+                      Aucun club renseigné
+                    </Text>
+                    <TouchableOpacity
+                      activeOpacity={0.7}
+                      style={styles.choicePill}
+                      onPress={() => updateCurrentUser({ favouriteClubs: 'Padel Collection, Set Club' })}
+                    >
+                      <Text style={styles.choicePillText}>+ Ajouter Padel Collection</Text>
+                    </TouchableOpacity>
+                  </View>
+                )}
               </View>
 
               {/* Edit Button */}
@@ -323,6 +529,13 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({
               Become a Coach
             </Text>
           </TouchableOpacity>
+
+          <TouchableOpacity activeOpacity={0.7} onPress={openAuth}>
+            <Text style={[styles.linkText, isDarkMode ? styles.linkTextDark : styles.linkTextLogin]}>
+              Connexion / Compte
+            </Text>
+          </TouchableOpacity>
+
           <TouchableOpacity activeOpacity={0.7} onPress={handleLogOut}>
             <Text style={[styles.linkText, isDarkMode ? styles.linkTextDark : styles.linkTextLogout]}>
               Log Out
@@ -330,35 +543,70 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({
           </TouchableOpacity>
         </View>
 
-        {/* Section: MY MATCHES */}
+        {/* Section: MY MATCHES (Dynamic) */}
         <View style={styles.myMatchesSection}>
           <View style={styles.matchesHeaderRow}>
-            <CalendarDays size={18} color={isDarkMode ? '#38bdf8' : '#2563eb'} strokeWidth={2.2} style={{ marginRight: 8 }} />
+            <CalendarDays
+              size={18}
+              color={isDarkMode ? '#38bdf8' : '#2563eb'}
+              strokeWidth={2.2}
+              style={{ marginRight: 8 }}
+            />
             <Text style={[styles.matchesTitle, isDarkMode ? styles.textSlate300 : styles.matchesTitleLight]}>
-              MY MATCHES
+              MY MATCHES ({myMatches.length})
             </Text>
           </View>
 
-          <View style={[styles.noMatchesCard, isDarkMode && styles.noMatchesCardDark]}>
-            <Text style={[styles.noMatchesText, isDarkMode && styles.textSlate400]}>
-              No matches played yet
-            </Text>
-          </View>
+          {myMatches.length === 0 ? (
+            <TouchableOpacity
+              activeOpacity={0.85}
+              style={[styles.noMatchesCard, isDarkMode && styles.noMatchesCardDark]}
+              onPress={onOpenMatches}
+            >
+              <Text style={[styles.noMatchesText, isDarkMode && styles.textSlate400]}>
+                Aucune partie rejointe pour le moment
+              </Text>
+              <Text style={styles.findMatchCtaText}>Rejoindre une partie ouverte →</Text>
+            </TouchableOpacity>
+          ) : (
+            myMatches.map((m) => {
+              const { fullBadge } = formatMatchDateTime(m.match_datetime);
+              return (
+                <TouchableOpacity
+                  key={m.id}
+                  activeOpacity={0.85}
+                  style={[styles.joinedMatchCard, isDarkMode && styles.joinedMatchCardDark]}
+                  onPress={onOpenMatches}
+                >
+                  <View style={styles.joinedMatchHeader}>
+                    <Text style={[styles.joinedMatchClub, isDarkMode && styles.textWhite]}>
+                      {m.club.name} · {m.club.city}
+                    </Text>
+                    <View style={styles.enrolledBadge}>
+                      <CheckCircle2 size={13} color="#10b981" style={{ marginRight: 4 }} />
+                      <Text style={styles.enrolledBadgeText}>Inscrit</Text>
+                    </View>
+                  </View>
+                  <Text style={styles.joinedMatchDate}>{fullBadge}</Text>
+                </TouchableOpacity>
+              );
+            })
+          )}
         </View>
       </ScrollView>
 
-      {/* Modal: My Smashly Card (Screenshot 2) */}
+      {/* Modal: My Smashly Card */}
       {showCardModal && (
         <SmashlyCardModal
           visible={showCardModal}
           onClose={() => setShowCardModal(false)}
-          userName={`${profile.firstName} ${profile.lastName}`}
-          userCity={profile.city}
-          userLevel={profile.level.toString()}
+          userName={fullName}
+          userCity={city}
+          userLevel={level.toString()}
         />
       )}
 
-      {/* Modal: Settings (Screenshots 3, 4, 5) with Dark Mode Toggle */}
+      {/* Modal: Settings */}
       {showSettingsModal && (
         <SettingsModal
           visible={showSettingsModal}
@@ -367,13 +615,21 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({
           isDarkMode={isDarkMode}
           onToggleDarkMode={onToggleDarkMode}
           onProfileUpdated={(updated) => {
-            setProfile((prev) => ({
-              ...prev,
-              firstName: updated.firstName,
-              lastName: updated.lastName,
-              whatsapp: updated.phone ? `+44${updated.phone}` : prev.whatsapp,
-            }));
+            updateCurrentUser({
+              first_name: updated.firstName,
+              last_name: updated.lastName,
+              phone: updated.phone ? `+33${updated.phone}` : whatsapp,
+            });
           }}
+        />
+      )}
+
+      {/* Modal: Smashly AI Auth (Fallback if onOpenAuth not provided) */}
+      {!onOpenAuth && showAuthModal && (
+        <AuthModal
+          visible={showAuthModal}
+          canDismiss={isAuthenticated}
+          onClose={() => setShowAuthModal(false)}
         />
       )}
     </View>
@@ -400,57 +656,112 @@ const styles = StyleSheet.create({
     elevation: 3,
   },
   logoImg: {
-    width: 38,
-    height: 38,
-    borderRadius: 10,
+    width: 36,
+    height: 36,
+    borderRadius: 8,
   },
   topActionsPill: {
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: '#ffffff',
     borderRadius: 999,
-    paddingHorizontal: 14,
-    paddingVertical: 7,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.1,
-    shadowRadius: 6,
-    elevation: 3,
-    borderWidth: 1,
-    borderColor: '#e2e8f0',
+    shadowRadius: 4,
+    elevation: 2,
+  },
+  topActionsPillDark: {
+    backgroundColor: 'rgba(30, 41, 59, 0.85)',
+    borderColor: 'rgba(100, 116, 139, 0.4)',
   },
   topPillBtn: {
-    padding: 2,
+    padding: 6,
   },
   topPillDivider: {
     width: 1,
     height: 18,
     backgroundColor: '#e2e8f0',
-    marginHorizontal: 12,
+    marginHorizontal: 4,
+  },
+  topPillDividerDark: {
+    backgroundColor: 'rgba(100, 116, 139, 0.4)',
   },
   scrollView: {
     flex: 1,
   },
   scrollContent: {
-    paddingHorizontal: 12,
+    paddingHorizontal: 16,
     paddingTop: 8,
   },
   cardWrapper: {
     width: '100%',
-  },
-  cardGradientBorder: {
-    borderRadius: 24,
-    padding: 2,
     shadowColor: '#38bdf8',
     shadowOffset: { width: 0, height: 8 },
     shadowOpacity: 0.25,
     shadowRadius: 16,
-    elevation: 6,
+    elevation: 8,
+  },
+  cardGradientBorder: {
+    borderRadius: 22,
+    padding: 2,
   },
   cardInner: {
+    borderRadius: 20,
     backgroundColor: '#ffffff',
-    borderRadius: 22,
-    padding: 16,
+    padding: 18,
+  },
+  cardInnerDark: {
+    backgroundColor: '#0f172a',
+  },
+  apiModeBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 6,
+    paddingHorizontal: 12,
+    borderRadius: 10,
+    marginBottom: 14,
+    borderWidth: 1,
+  },
+  bannerLive: {
+    backgroundColor: 'rgba(16, 185, 129, 0.12)',
+    borderColor: 'rgba(16, 185, 129, 0.35)',
+  },
+  bannerTest: {
+    backgroundColor: 'rgba(250, 204, 21, 0.12)',
+    borderColor: 'rgba(250, 204, 21, 0.35)',
+  },
+  apiModeDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    marginRight: 8,
+  },
+  dotGreen: {
+    backgroundColor: '#10b981',
+  },
+  dotYellow: {
+    backgroundColor: '#facc15',
+  },
+  apiModeText: {
+    fontSize: 12,
+    fontWeight: '700',
+    flex: 1,
+  },
+  textLive: {
+    color: '#34d399',
+  },
+  textTest: {
+    color: '#facc15',
+  },
+  apiModeSwitch: {
+    color: '#94a3b8',
+    fontSize: 11,
+    fontWeight: '600',
   },
   profileHeaderRow: {
     flexDirection: 'row',
@@ -458,45 +769,45 @@ const styles = StyleSheet.create({
   },
   avatarContainer: {
     position: 'relative',
-    marginRight: 12,
+    marginRight: 14,
   },
   avatarBox: {
-    width: 54,
-    height: 54,
-    borderRadius: 16,
-    backgroundColor: '#2563eb',
+    width: 60,
+    height: 60,
+    borderRadius: 30,
+    backgroundColor: '#e2e8f0',
     justifyContent: 'center',
     alignItems: 'center',
-    shadowColor: '#2563eb',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 6,
-    elevation: 3,
+    overflow: 'hidden',
+  },
+  avatarImg: {
+    width: 60,
+    height: 60,
+    borderRadius: 30,
   },
   avatarInitials: {
-    color: '#ffffff',
-    fontSize: 20,
+    fontSize: 22,
     fontWeight: '800',
-    letterSpacing: 0.5,
+    color: '#0f172a',
   },
   avatarPlusBadge: {
     position: 'absolute',
-    bottom: -3,
-    right: -3,
-    width: 19,
-    height: 19,
-    borderRadius: 10,
+    bottom: -2,
+    right: -2,
+    width: 18,
+    height: 18,
+    borderRadius: 9,
     backgroundColor: '#2563eb',
+    justifyContent: 'center',
+    alignItems: 'center',
     borderWidth: 2,
     borderColor: '#ffffff',
-    alignItems: 'center',
-    justifyContent: 'center',
   },
   profileNameCol: {
     flex: 1,
   },
   profileName: {
-    fontSize: 18,
+    fontSize: 20,
     fontWeight: '800',
     color: '#0f172a',
     letterSpacing: -0.2,
@@ -529,6 +840,9 @@ const styles = StyleSheet.create({
     paddingHorizontal: 8,
     paddingVertical: 3,
   },
+  progressPillDark: {
+    backgroundColor: 'rgba(30, 41, 59, 0.7)',
+  },
   progressBarTrack: {
     width: 38,
     height: 4,
@@ -538,7 +852,6 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
   },
   progressBarFill: {
-    width: '12%',
     height: '100%',
     backgroundColor: '#2563eb',
   },
@@ -554,6 +867,9 @@ const styles = StyleSheet.create({
     fontWeight: '500',
     marginTop: 12,
     marginBottom: 14,
+  },
+  bioTextDark: {
+    color: '#94a3b8',
   },
   infoRow2Col: {
     flexDirection: 'row',
@@ -576,6 +892,10 @@ const styles = StyleSheet.create({
     borderColor: '#bfdbfe',
     borderRadius: 14,
     padding: 10,
+  },
+  infoCardDark: {
+    backgroundColor: '#1e293b',
+    borderColor: '#334155',
   },
   badgeLabelRow: {
     flexDirection: 'row',
@@ -650,20 +970,16 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 3 },
-    shadowOpacity: 0.18,
-    shadowRadius: 5,
-    elevation: 4,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 4,
+    elevation: 3,
   },
   railBtnBlue: {
     backgroundColor: '#2563eb',
   },
   railBtnDarkBlue: {
-    backgroundColor: '#1d4ed8',
-    borderWidth: 1.5,
-    borderColor: '#38bdf8',
-    shadowColor: '#0284c7',
-    shadowOpacity: 0.4,
+    backgroundColor: '#1e3a8a',
   },
   railBtnWhite: {
     backgroundColor: '#ffffff',
@@ -677,87 +993,111 @@ const styles = StyleSheet.create({
   },
   linksRow: {
     flexDirection: 'row',
-    justifyContent: 'center',
-    gap: 32,
-    marginTop: 18,
-    marginBottom: 20,
+    justifyContent: 'space-around',
+    alignItems: 'center',
+    marginVertical: 18,
+    paddingHorizontal: 8,
   },
   linkText: {
     fontSize: 14,
     fontWeight: '600',
-    color: '#334155',
   },
   linkTextCoach: {
-    color: '#2563eb',
-    fontWeight: '700',
+    color: '#f59e0b',
   },
-  linkTextLogout: {
-    color: '#64748b',
-    fontWeight: '600',
-  },
-  linkTextDark: {
+  linkTextLogin: {
     color: '#38bdf8',
   },
+  linkTextLogout: {
+    color: '#ef4444',
+  },
+  linkTextDark: {
+    color: '#94a3b8',
+  },
   myMatchesSection: {
-    marginTop: 4,
-    paddingHorizontal: 4,
+    marginTop: 8,
   },
   matchesHeaderRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 10,
+    marginBottom: 12,
   },
   matchesTitle: {
-    fontSize: 13,
+    fontSize: 14,
     fontWeight: '800',
-    color: '#475569',
-    letterSpacing: 0.6,
+    letterSpacing: 0.5,
   },
   matchesTitleLight: {
-    color: '#0f172a',
+    color: '#475569',
   },
   noMatchesCard: {
     backgroundColor: '#ffffff',
-    borderRadius: 16,
-    paddingVertical: 18,
-    paddingHorizontal: 20,
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+    borderRadius: 14,
+    padding: 18,
     alignItems: 'center',
     justifyContent: 'center',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.08,
-    shadowRadius: 6,
-    elevation: 2,
-    borderWidth: 1,
-    borderColor: '#f1f5f9',
   },
   noMatchesCardDark: {
     backgroundColor: '#0f172a',
     borderColor: '#1e293b',
-    shadowOpacity: 0.3,
   },
   noMatchesText: {
+    color: '#64748b',
     fontSize: 14,
     fontWeight: '500',
-    color: '#64748b',
   },
-
-  // DARK MODE CONDITIONAL STYLES
-  topActionsPillDark: {
+  findMatchCtaText: {
+    color: '#38bdf8',
+    fontSize: 13,
+    fontWeight: '700',
+    marginTop: 8,
+  },
+  joinedMatchCard: {
+    backgroundColor: '#ffffff',
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+    borderRadius: 14,
+    padding: 14,
+    marginBottom: 10,
+  },
+  joinedMatchCardDark: {
     backgroundColor: '#0f172a',
-    borderColor: '#334155',
+    borderColor: '#1e293b',
   },
-  topPillDividerDark: {
-    backgroundColor: '#334155',
+  joinedMatchHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 6,
   },
-  cardInnerDark: {
-    backgroundColor: '#0b1120',
+  joinedMatchClub: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: '#0f172a',
+    flex: 1,
+  },
+  enrolledBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(16, 185, 129, 0.15)',
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 999,
+  },
+  enrolledBadgeText: {
+    color: '#10b981',
+    fontSize: 11,
+    fontWeight: '700',
+  },
+  joinedMatchDate: {
+    fontSize: 13,
+    color: '#94a3b8',
+    fontWeight: '500',
   },
   textWhite: {
     color: '#ffffff',
-  },
-  textSlate200: {
-    color: '#e2e8f0',
   },
   textSlate300: {
     color: '#cbd5e1',
@@ -765,15 +1105,114 @@ const styles = StyleSheet.create({
   textSlate400: {
     color: '#94a3b8',
   },
-  progressPillDark: {
-    backgroundColor: '#1e293b',
-    borderColor: '#334155',
+  personaSwitchRow: {
+    flexDirection: 'row',
+    gap: 10,
+    marginBottom: 14,
+    paddingHorizontal: 4,
   },
-  bioTextDark: {
+  personaTabBtn: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    borderRadius: 14,
+    borderWidth: 1.5,
+  },
+  personaTabBtnActiveJulien: {
+    backgroundColor: '#3b82f6',
+    borderColor: '#60a5fa',
+    shadowColor: '#3b82f6',
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.35,
+    shadowRadius: 6,
+    elevation: 4,
+  },
+  personaTabBtnActiveNizar: {
+    backgroundColor: '#10b981',
+    borderColor: '#34d399',
+    shadowColor: '#10b981',
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.35,
+    shadowRadius: 6,
+    elevation: 4,
+  },
+  personaTabBtnInactive: {
+    backgroundColor: 'rgba(30, 41, 59, 0.5)',
+    borderColor: 'rgba(71, 85, 105, 0.4)',
+  },
+  personaTabText: {
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  personaTabTextActive: {
+    color: '#ffffff',
+  },
+  personaTabTextInactive: {
     color: '#94a3b8',
   },
-  infoCardDark: {
-    backgroundColor: '#0f172a',
-    borderColor: '#1e293b',
+  subBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(56, 189, 248, 0.08)',
+    borderWidth: 1,
+    borderColor: 'rgba(56, 189, 248, 0.25)',
+    borderRadius: 12,
+    padding: 10,
+    marginVertical: 10,
+  },
+  subBannerDark: {
+    backgroundColor: 'rgba(15, 23, 42, 0.8)',
+    borderColor: 'rgba(56, 189, 248, 0.3)',
+  },
+  subBannerIcon: {
+    width: 26,
+    height: 26,
+    borderRadius: 13,
+    backgroundColor: 'rgba(56, 189, 248, 0.15)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 8,
+  },
+  subBannerTitle: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#0284c7',
+  },
+  subBannerSubtitle: {
+    fontSize: 11,
+    color: '#64748b',
+    marginTop: 1,
+  },
+  inlineChoiceRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    flexWrap: 'wrap',
+    gap: 6,
+  },
+  emptyLabelText: {
+    fontSize: 13,
+    color: '#94a3b8',
+    fontStyle: 'italic',
+  },
+  inlinePillsGroup: {
+    flexDirection: 'row',
+    gap: 6,
+  },
+  choicePill: {
+    backgroundColor: 'rgba(56, 189, 248, 0.12)',
+    borderWidth: 1,
+    borderColor: 'rgba(56, 189, 248, 0.3)',
+    borderRadius: 8,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+  },
+  choicePillText: {
+    color: '#38bdf8',
+    fontSize: 11,
+    fontWeight: '700',
   },
 });

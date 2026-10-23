@@ -3,13 +3,12 @@ import {
   View,
   Text,
   StyleSheet,
-  ImageBackground,
   Image,
   TextInput,
   TouchableOpacity,
   Animated,
   Easing,
-  Dimensions,
+  useWindowDimensions,
   Platform,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -33,6 +32,7 @@ import {
 import { colors } from '../theme/colors';
 import { PadelCourtIcon } from './PadelCourtIcon';
 import PadelBallLogo from './PadelBallLogo';
+import { SmashlyAIChatModal } from './SmashlyAIChatModal';
 import { t } from '../i18n';
 
 interface WelcomeScreenProps {
@@ -57,10 +57,20 @@ export const WelcomeScreen: React.FC<WelcomeScreenProps> = ({
   showBottomNav = false,
 }) => {
   const insets = useSafeAreaInsets();
+  const { width: windowWidth } = useWindowDimensions();
   const [chatMode, setChatMode] = useState<'matching' | 'assistant'>('matching');
   const [inputText, setInputText] = useState('');
   const [networkOnly, setNetworkOnly] = useState(false);
   const [showToast, setShowToast] = useState(false);
+  const [showChatModal, setShowChatModal] = useState(false);
+  const [chatPrompt, setChatPrompt] = useState('');
+
+  const handleOpenChat = (prompt?: string) => {
+    const p = prompt !== undefined ? prompt : inputText;
+    setChatPrompt(p);
+    setInputText('');
+    setShowChatModal(true);
+  };
 
   // Animation state for deck card shuffle
   const isAnimating = useRef(false);
@@ -291,16 +301,17 @@ export const WelcomeScreen: React.FC<WelcomeScreenProps> = ({
   const isCommunity = chatMode === 'matching';
 
   const defaultPlaceholder = isCommunity
-    ? 'Demande à Smashly de trouver un partenair'
-    : 'Demande à Smashly comment améliorer ta défense d';
+    ? 'Demande à Smashly de trouver un partenaire...'
+    : 'Demande à Smashly comment améliorer ta défense...';
 
   return (
     <View style={styles.container}>
-      <ImageBackground
-        source={require('../../images/hero-welcome-test.jpg')}
-        style={styles.backgroundImage}
-        resizeMode="cover"
-      >
+      <View style={styles.backgroundImage}>
+        <Image
+          source={require('../../images/hero-welcome-test.jpg')}
+          style={StyleSheet.absoluteFill}
+          resizeMode="cover"
+        />
         {/* Dark vertical gradient overlay per COULEURS.md:
             rgba(2,6,23,0.35) en haut, 0.25 au milieu, 0.45 en bas */}
         <LinearGradient
@@ -326,19 +337,24 @@ export const WelcomeScreen: React.FC<WelcomeScreenProps> = ({
                 source={require('../../images/pwa-icon-192.png')}
                 style={styles.appIcon}
                 resizeMode="contain"
+                accessibilityRole="image"
+                accessibilityLabel="Logo Smashly AI"
               />
             </View>
 
             <TouchableOpacity
               activeOpacity={0.7}
               style={styles.bellButton}
+              accessibilityRole="button"
+              accessibilityLabel="Notifications"
+              hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
             >
               <Bell size={24} color="#ffffff" strokeWidth={1.8} />
             </TouchableOpacity>
           </View>
 
           {/* Main Title */}
-          <Text style={styles.mainTitle}>
+          <Text style={styles.mainTitle} accessibilityRole="header">
             Un coach, un partenaire ou un club ?
           </Text>
 
@@ -351,6 +367,8 @@ export const WelcomeScreen: React.FC<WelcomeScreenProps> = ({
               value={inputText}
               onChangeText={setInputText}
               multiline
+              onSubmitEditing={() => handleOpenChat()}
+              accessibilityLabel="Champ de recherche et assistant Smashly AI"
             />
 
             <View style={styles.inputBottomRow}>
@@ -359,13 +377,26 @@ export const WelcomeScreen: React.FC<WelcomeScreenProps> = ({
                 <TouchableOpacity
                   activeOpacity={0.7}
                   style={styles.inputActionIconBtn}
+                  accessibilityRole="button"
+                  accessibilityLabel="Idée de recherche padel"
+                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                  onPress={() =>
+                    handleOpenChat(
+                      isCommunity
+                        ? 'Trouve des joueurs niveau 5 à Marseille'
+                        : 'Comment bien défendre sur les vitres au padel ?'
+                    )
+                  }
                 >
-                  <Lightbulb size={18} color="#94a3b8" />
+                  <Lightbulb size={18} color="#facc15" />
                 </TouchableOpacity>
 
                 <TouchableOpacity
                   activeOpacity={0.7}
                   style={styles.inputActionIconBtn}
+                  accessibilityRole="button"
+                  accessibilityLabel="Partager le lien d'invitation"
+                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                   onPress={handleShare}
                 >
                   <Share2 size={18} color="#94a3b8" />
@@ -377,13 +408,30 @@ export const WelcomeScreen: React.FC<WelcomeScreenProps> = ({
                 <TouchableOpacity
                   activeOpacity={0.7}
                   style={styles.inputActionIconBtn}
+                  accessibilityRole="button"
+                  accessibilityLabel="Recherche vocale"
+                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                  onPress={() =>
+                    handleOpenChat(
+                      isCommunity
+                        ? 'Recherche des partenaires padel ce week-end'
+                        : 'Quels exercices pour progresser en bandeja ?'
+                    )
+                  }
                 >
                   <Mic size={18} color="#94a3b8" />
                 </TouchableOpacity>
 
                 <TouchableOpacity
                   activeOpacity={0.8}
-                  style={styles.sendButton}
+                  style={[
+                    styles.sendButton,
+                    inputText.trim() !== '' && { backgroundColor: colors.blue500 },
+                  ]}
+                  accessibilityRole="button"
+                  accessibilityLabel="Envoyer le message ou lancer la recherche"
+                  hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
+                  onPress={() => handleOpenChat()}
                 >
                   <ArrowUp size={18} color="#ffffff" strokeWidth={2.5} />
                 </TouchableOpacity>
@@ -395,6 +443,10 @@ export const WelcomeScreen: React.FC<WelcomeScreenProps> = ({
               <TouchableOpacity
                 activeOpacity={0.8}
                 onPress={() => setNetworkOnly(!networkOnly)}
+                accessibilityRole="switch"
+                accessibilityLabel="Filtrer uniquement mon réseau"
+                accessibilityState={{ checked: networkOnly }}
+                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                 style={[
                   styles.networkBadge,
                   networkOnly && styles.networkBadgeActive,
@@ -421,7 +473,7 @@ export const WelcomeScreen: React.FC<WelcomeScreenProps> = ({
           {/* Interactive Stacked Cards Deck & Shortcuts Row */}
           <View style={styles.deckAndShortcutsRow}>
             {/* Left: 3D Stacked Deck of Mode Cards with Card-Dealing Animation */}
-            <View style={styles.deckContainer}>
+            <View style={[styles.deckContainer, { width: Math.min(Math.max((windowWidth - 44) * 0.46, 140), 220) }]}>
               {/* Card 1: Community Card */}
               <Animated.View
                 style={[
@@ -451,6 +503,9 @@ export const WelcomeScreen: React.FC<WelcomeScreenProps> = ({
                   activeOpacity={0.9}
                   onPress={() => toggleMode()}
                   style={styles.cardTouchable}
+                  accessibilityRole="button"
+                  accessibilityLabel="Mode Communauté Smashly: Trouve des joueurs et des coachs"
+                  accessibilityState={{ selected: isCommunity }}
                 >
                   {isCommunity ? (
                     // Front State
@@ -520,6 +575,9 @@ export const WelcomeScreen: React.FC<WelcomeScreenProps> = ({
                   activeOpacity={0.9}
                   onPress={() => toggleMode()}
                   style={styles.cardTouchable}
+                  accessibilityRole="button"
+                  accessibilityLabel="Mode Assistant IA Smashly: Conseils techniques et recommandations padel"
+                  accessibilityState={{ selected: !isCommunity }}
                 >
                   {!isCommunity ? (
                     // Front State
@@ -568,6 +626,8 @@ export const WelcomeScreen: React.FC<WelcomeScreenProps> = ({
                 activeOpacity={0.7}
                 style={styles.shortcutRow}
                 onPress={onOpenMatches}
+                accessibilityRole="button"
+                accessibilityLabel="Rejoins une partie de padel ouverte"
               >
                 <View style={styles.shortcutIconContainer}>
                   <CalendarDays size={18} color="#ffffff" strokeWidth={2} />
@@ -585,6 +645,8 @@ export const WelcomeScreen: React.FC<WelcomeScreenProps> = ({
                 activeOpacity={0.7}
                 style={styles.shortcutRow}
                 onPress={onBookCoach}
+                accessibilityRole="button"
+                accessibilityLabel="Réserve un coach de padel certifié"
               >
                 <View style={styles.shortcutIconContainer}>
                   <GraduationCap size={18} color="#ffffff" strokeWidth={2} />
@@ -666,13 +728,21 @@ export const WelcomeScreen: React.FC<WelcomeScreenProps> = ({
           ) : (
             <View style={{ height: Math.max(insets.bottom, 14) + 65 }} />
           )}
+
+          {/* Real Smashly AI Chat Modal */}
+          {showChatModal && (
+            <SmashlyAIChatModal
+              visible={showChatModal}
+              onClose={() => setShowChatModal(false)}
+              initialMode={chatMode}
+              initialPrompt={chatPrompt}
+            />
+          )}
         </View>
-      </ImageBackground>
+      </View>
     </View>
   );
 };
-
-const { width } = Dimensions.get('window');
 
 const styles = StyleSheet.create({
   container: {
@@ -841,7 +911,6 @@ const styles = StyleSheet.create({
     zIndex: 10,
   },
   deckContainer: {
-    width: (width - 44) * 0.46,
     height: 216,
     position: 'relative',
     marginRight: 12,

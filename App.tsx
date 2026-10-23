@@ -19,12 +19,22 @@ import { NetworkScreen } from './src/components/NetworkScreen';
 import { MapScreen } from './src/components/MapScreen';
 import { SwipeableTabScreen } from './src/components/SwipeableTabScreen';
 import { BottomNavBar, NavTab } from './src/components/BottomNavBar';
+import { AuthModal } from './src/components/AuthModal';
+import { MatchesProvider, useMatches } from './src/context/MatchesContext';
 import { colors } from './src/theme/colors';
 
-export default function App() {
+function MainApp() {
+  const { isAuthenticated, currentUser } = useMatches();
+  // Optional modal state when already authenticated (e.g. from ProfileScreen)
+  const [showAuthModal, setShowAuthModal] = useState(false);
+
+  // If not authenticated, the Auth Screen is strictly mandatory and cannot be bypassed
+  const isAuthVisible = !isAuthenticated || showAuthModal;
+
   const [activeTab, setActiveTab] = useState<NavTab>('welcome');
   const [navigationHistory, setNavigationHistory] = useState<NavTab[]>(['welcome']);
   const [showMatchDetail, setShowMatchDetail] = useState(false);
+  const [selectedMatchId, setSelectedMatchId] = useState<string | null>(null);
   const [showFilters, setShowFilters] = useState(false);
   const [isDarkMode, setIsDarkMode] = useState(true);
 
@@ -51,6 +61,17 @@ export default function App() {
   }, []);
 
   const handleGoBack = useCallback(() => {
+    // 0. If user is NOT authenticated, back button must NOT bypass login!
+    if (!isAuthenticated) {
+      return false; // Handled by 2-tap exit protection
+    }
+
+    // 0b. If Auth modal was voluntarily opened by an already-authenticated user, close it
+    if (showAuthModal) {
+      setShowAuthModal(false);
+      return true;
+    }
+
     // 1. If Filter modal is open, close it
     if (showFilters) {
       setShowFilters(false);
@@ -71,7 +92,7 @@ export default function App() {
 
     // 4. On Welcome screen: return false to allow 2-tap exit protection
     return false;
-  }, [showFilters, showMatchDetail, activeTab, returnToChat]);
+  }, [isAuthenticated, showAuthModal, showFilters, showMatchDetail, activeTab, returnToChat]);
 
   // ANDROID HARDWARE BACK BUTTON HANDLER
   useEffect(() => {
@@ -132,101 +153,128 @@ export default function App() {
   }, [navigateToTab]);
 
   return (
-    <SafeAreaProvider>
-      <View style={[styles.container, !isDarkMode && styles.containerLight]}>
-        <StatusBar style={isDarkMode ? 'light' : 'dark'} />
+    <View style={[styles.container, !isDarkMode && styles.containerLight]}>
+      <StatusBar style={isDarkMode ? 'light' : 'dark'} />
 
-        {/* Screen Container: Base Chat Page + Overlay Swipeable Tab Sheet */}
-        <View style={styles.screenContainer}>
-          {/* Base Chat Page: Always mounted to preserve conversation state & scroll */}
-          <WelcomeScreen
-            onOpenMatches={() => navigateToTab('courts')}
-            onBookCoach={() =>
-              Alert.alert('Réserve ton coach', 'Affichage des coachs de padel certifiés Smashly.')
-            }
-            onQuickAction={handleQuickAction}
-            onOpenNetwork={() => navigateToTab('network')}
-            onOpenMap={() => navigateToTab('map')}
-            onOpenCourts={() => navigateToTab('courts')}
-            onOpenProfile={() => navigateToTab('profile')}
-            showBottomNav={false}
-          />
-
-          {/* Any other action from the bottom navbar slides up as a sheet that can be swiped down */}
-          {activeTab !== 'welcome' && (
-            <SwipeableTabScreen
-              key={activeTab}
-              isDarkMode={isDarkMode}
-              onDismiss={() => {
-                setActiveTab('welcome');
-                setNavigationHistory(['welcome']);
-              }}
-            >
-              {activeTab === 'profile' && (
-                <ProfileScreen
-                  onGoHome={returnToChat}
-                  onOpenMatches={() => navigateToTab('courts')}
-                  onBookCoach={() =>
-                    Alert.alert('Réserve ton coach', 'Affichage des coachs de padel certifiés Smashly.')
-                  }
-                  isDarkMode={isDarkMode}
-                  onToggleDarkMode={toggleDarkMode}
-                />
-              )}
-
-              {activeTab === 'courts' && (
-                <OpenMatchesModal
-                  visible={true}
-                  isScreen={true}
-                  onClose={returnToChat}
-                  onOpenMatchDetail={() => setShowMatchDetail(true)}
-                  onOpenFilters={() => setShowFilters(true)}
-                />
-              )}
-
-              {activeTab === 'network' && (
-                <NetworkScreen
-                  onGoHome={returnToChat}
-                  onOpenProfile={() => navigateToTab('profile')}
-                />
-              )}
-
-              {activeTab === 'map' && (
-                <MapScreen
-                  onGoHome={returnToChat}
-                  onOpenMatches={() => navigateToTab('courts')}
-                />
-              )}
-            </SwipeableTabScreen>
-          )}
-        </View>
-
-        {/* Match Detail Modal: On-demand mount to save GPU & memory */}
-        {showMatchDetail && (
-          <MatchDetailModal
-            visible={showMatchDetail}
-            onClose={() => setShowMatchDetail(false)}
-          />
-        )}
-
-        {/* Filters Modal with Swipe-down Dismissal: On-demand mount */}
-        {showFilters && (
-          <FiltersModal
-            visible={showFilters}
-            onClose={() => setShowFilters(false)}
-            onApply={() => {
-              // Apply filters
-            }}
-          />
-        )}
-
-        {/* Persistent Floating Bottom Navigation Bar with Instant Response */}
-        <BottomNavBar
-          activeTab={activeTab}
-          onSelectTab={navigateToTab}
+      {/* Screen Container: Base Chat Page + Overlay Swipeable Tab Sheet */}
+      <View style={styles.screenContainer}>
+        {/* Base Chat Page: Always mounted to preserve conversation state & scroll */}
+        <WelcomeScreen
+          onOpenMatches={() => navigateToTab('courts')}
+          onBookCoach={() =>
+            Alert.alert('Réserve ton coach', 'Affichage des coachs de padel certifiés Smashly.')
+          }
           onQuickAction={handleQuickAction}
+          onOpenNetwork={() => navigateToTab('network')}
+          onOpenMap={() => navigateToTab('map')}
+          onOpenCourts={() => navigateToTab('courts')}
+          onOpenProfile={() => navigateToTab('profile')}
+          showBottomNav={false}
         />
+
+        {/* Any other action from the bottom navbar slides up as a sheet that can be swiped down */}
+        {activeTab !== 'welcome' && (
+          <SwipeableTabScreen
+            key={activeTab}
+            isDarkMode={isDarkMode}
+            onDismiss={() => {
+              setActiveTab('welcome');
+              setNavigationHistory(['welcome']);
+            }}
+          >
+            {activeTab === 'profile' && (
+              <ProfileScreen
+                onGoHome={returnToChat}
+                onOpenMatches={() => navigateToTab('courts')}
+                onBookCoach={() =>
+                  Alert.alert('Réserve ton coach', 'Affichage des coachs de padel certifiés Smashly.')
+                }
+                isDarkMode={isDarkMode}
+                onToggleDarkMode={toggleDarkMode}
+                onOpenAuth={() => setShowAuthModal(true)}
+              />
+            )}
+
+            {activeTab === 'courts' && (
+              <OpenMatchesModal
+                visible={true}
+                isScreen={true}
+                onClose={returnToChat}
+                onOpenMatchDetail={(matchId: string) => {
+                  setSelectedMatchId(matchId);
+                  setShowMatchDetail(true);
+                }}
+                onOpenFilters={() => setShowFilters(true)}
+              />
+            )}
+
+            {activeTab === 'network' && (
+              <NetworkScreen
+                onGoHome={returnToChat}
+                onOpenProfile={() => navigateToTab('profile')}
+              />
+            )}
+
+            {activeTab === 'map' && (
+              <MapScreen
+                onGoHome={returnToChat}
+                onOpenMatches={() => navigateToTab('courts')}
+              />
+            )}
+          </SwipeableTabScreen>
+        )}
       </View>
+
+      {/* Match Detail Modal: On-demand mount to save GPU & memory */}
+      {showMatchDetail && (
+        <MatchDetailModal
+          visible={showMatchDetail}
+          matchId={selectedMatchId}
+          onClose={() => {
+            setShowMatchDetail(false);
+            setSelectedMatchId(null);
+          }}
+        />
+      )}
+
+      {/* Filters Modal with Swipe-down Dismissal: On-demand mount */}
+      {showFilters && (
+        <FiltersModal
+          visible={showFilters}
+          onClose={() => setShowFilters(false)}
+          onApply={() => {
+            // Apply filters
+          }}
+        />
+      )}
+
+      {/* Auth Screen / Modal: Mandatory when unauthenticated; dismissible only if already logged in */}
+      <AuthModal
+        visible={isAuthVisible}
+        canDismiss={isAuthenticated}
+        onClose={() => setShowAuthModal(false)}
+        onSuccess={() => setShowAuthModal(false)}
+      />
+
+      {/* Persistent Floating Bottom Navigation Bar with Instant Response */}
+      <BottomNavBar
+        activeTab={activeTab}
+        onSelectTab={navigateToTab}
+        onQuickAction={handleQuickAction}
+        avatarUrl={currentUser.profile_picture_url}
+        userInitials={((currentUser.first_name?.[0] || 'J') + (currentUser.last_name?.[0] || 'D')).toUpperCase()}
+        isJulien={!currentUser.profile_picture_url && currentUser.first_name?.toLowerCase() === 'julien'}
+      />
+    </View>
+  );
+}
+
+export default function App() {
+  return (
+    <SafeAreaProvider>
+      <MatchesProvider>
+        <MainApp />
+      </MatchesProvider>
     </SafeAreaProvider>
   );
 }

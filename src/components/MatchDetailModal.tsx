@@ -6,7 +6,10 @@ import {
   Modal,
   TouchableOpacity,
   ScrollView,
-  ImageBackground,
+  Image,
+  Alert,
+  ToastAndroid,
+  Platform,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
@@ -16,21 +19,153 @@ import {
   Clock,
   Plus,
   Target,
+  Check,
 } from 'lucide-react-native';
-import { Image } from 'react-native';
 
 import { colors } from '../theme/colors';
+import { useMatches } from '../context/MatchesContext';
+import { calculateMatchLevelRange, formatMatchDateTime } from '../services/matchRules';
+import { Match, Player } from '../types/match';
 
 interface MatchDetailModalProps {
   visible: boolean;
+  matchId?: string | null;
   onClose: () => void;
 }
 
 export const MatchDetailModal: React.FC<MatchDetailModalProps> = ({
   visible,
+  matchId,
   onClose,
 }) => {
   const insets = useSafeAreaInsets();
+  const { matches, currentUser, getMatchStatus, joinMatch, leaveMatch, requestToJoin } =
+    useMatches();
+
+  // Find match by matchId or fallback to first match
+  const match: Match | undefined =
+    matches.find((m) => m.id === matchId) || matches[0];
+
+  if (!match) return null;
+
+  const userStatus = getMatchStatus(match);
+  const { minLevel, maxLevel, average } = calculateMatchLevelRange(match.players);
+  const remainingSpots = match.max_players - match.players.length;
+
+  const showToast = (message: string) => {
+    if (Platform.OS === 'android') {
+      ToastAndroid.show(message, ToastAndroid.SHORT);
+    }
+  };
+
+  const handleJoin = () => {
+    const res = joinMatch(match.id);
+    if (res.success) {
+      showToast('Partie rejointe !');
+    } else if (res.message) {
+      Alert.alert('Information', res.message);
+    }
+  };
+
+  const handleLeave = () => {
+    Alert.alert(
+      'Quitter la partie',
+      'Voulez-vous vraiment vous désinscrire de cette partie ?',
+      [
+        { text: 'Non', style: 'cancel' },
+        {
+          text: 'Oui, quitter',
+          style: 'destructive',
+          onPress: () => {
+            leaveMatch(match.id);
+            showToast('Désinscription enregistrée');
+          },
+        },
+      ]
+    );
+  };
+
+  const handleRequest = () => {
+    requestToJoin(match.id);
+    showToast('Demande envoyée aux joueurs de la partie');
+  };
+
+  const formatLevelNum = (num: number) =>
+    num % 1 === 0 ? num.toString() : num.toFixed(1).replace('.', ',');
+
+  // Render a single player slot (0, 1, 2, or 3)
+  const renderPlayerSlot = (slotIndex: number) => {
+    const player: Player | undefined = match.players.find((p) => p.slot === slotIndex);
+    const isCurrentUser =
+      player && (player.user_id === currentUser.user_id || player.first_name === currentUser.first_name);
+
+    if (player) {
+      return (
+        <View key={slotIndex} style={styles.playerSlot}>
+          <View
+            style={[
+              styles.avatarCircle,
+              isCurrentUser && { borderColor: colors.yellow400, borderWidth: 1.8 },
+            ]}
+          >
+            {player.first_name.toLowerCase() === 'césar' ? (
+              <Image
+                source={require('../../images/avatar-cesar.png')}
+                style={styles.playerAvatarImg}
+              />
+            ) : isCurrentUser ? (
+              <Image
+                source={require('../../images/avatar-julien.png')}
+                style={styles.playerAvatarImg}
+              />
+            ) : (
+              <Text style={styles.avatarInitial}>
+                {player.first_name.charAt(0).toUpperCase()}
+              </Text>
+            )}
+          </View>
+          <View style={styles.nameContainer}>
+            <Text style={styles.playerName} numberOfLines={1}>
+              {player.first_name}
+            </Text>
+          </View>
+          <View style={styles.badgeContainer}>
+            <View style={styles.purpleLevelBadge}>
+              <Text style={styles.purpleLevelText}>{player.level}</Text>
+            </View>
+          </View>
+        </View>
+      );
+    }
+
+    // Free Slot
+    return (
+      <TouchableOpacity
+        key={slotIndex}
+        activeOpacity={userStatus === 'CAN_JOIN' ? 0.7 : 1}
+        style={styles.playerSlot}
+        onPress={() => {
+          if (userStatus === 'CAN_JOIN') {
+            joinMatch(match.id, slotIndex);
+            showToast('Partie rejointe !');
+          }
+        }}
+      >
+        <View style={styles.dashedSlot}>
+          <Plus size={24} color="#64748b" strokeWidth={2} />
+        </View>
+        <View style={styles.nameContainer}>
+          <Text style={styles.freeSlotText} numberOfLines={1}>
+            Place libre
+          </Text>
+        </View>
+        <View style={styles.badgeContainer} />
+      </TouchableOpacity>
+    );
+  };
+
+  // Date and Time parsing
+  const { dateShort, time } = formatMatchDateTime(match.match_datetime);
 
   return (
     <Modal
@@ -47,11 +182,16 @@ export const MatchDetailModal: React.FC<MatchDetailModalProps> = ({
         >
           {/* Hero Image Section */}
           <View style={styles.heroWrapper}>
-            <ImageBackground
-              source={require('../../images/venelles-court.jpg')}
-              style={styles.heroImage}
+            <Image
+              source={
+                match.club.city.toLowerCase().includes('venelles')
+                  ? require('../../images/venelles-court.jpg')
+                  : require('../../images/hero-welcome-test.jpg')
+              }
+              style={StyleSheet.absoluteFill}
               resizeMode="cover"
-            >
+            />
+            <View style={styles.heroImage}>
               {/* Header with back and itinerary buttons */}
               <View style={[styles.topControls, { paddingTop: Math.max(insets.top, 16) }]}>
                 <TouchableOpacity
@@ -65,6 +205,7 @@ export const MatchDetailModal: React.FC<MatchDetailModalProps> = ({
                 <TouchableOpacity
                   activeOpacity={0.8}
                   style={styles.itineraryBtn}
+                  onPress={() => showToast(`Itinéraire vers ${match.club.name}`)}
                 >
                   <MapPin size={15} color="#ffffff" style={{ marginRight: 6 }} />
                   <Text style={styles.itineraryText}>Itinéraire</Text>
@@ -73,10 +214,10 @@ export const MatchDetailModal: React.FC<MatchDetailModalProps> = ({
 
               {/* Title & Location at bottom of hero */}
               <View style={styles.heroBottomText}>
-                <Text style={styles.clubTitle}>Avt Association Venelloise ...</Text>
-                <Text style={styles.clubSubtitle}>Venelles</Text>
+                <Text style={styles.clubTitle}>{match.club.name}</Text>
+                <Text style={styles.clubSubtitle}>{match.club.city}</Text>
               </View>
-            </ImageBackground>
+            </View>
           </View>
 
           {/* Details Section */}
@@ -85,109 +226,66 @@ export const MatchDetailModal: React.FC<MatchDetailModalProps> = ({
             <View style={styles.dateTimeRow}>
               <View style={styles.dateTimeItem}>
                 <CalendarDays size={20} color={colors.blue500} style={{ marginRight: 8 }} />
-                <Text style={styles.dateTimeText}>Jeudi 22 octobre</Text>
+                <Text style={styles.dateTimeText}>{dateShort}</Text>
               </View>
 
               <View style={styles.dateTimeItem}>
                 <Clock size={20} color={colors.blue500} style={{ marginRight: 8 }} />
-                <Text style={styles.dateTimeText}>16:30</Text>
+                <Text style={styles.dateTimeText}>{time}</Text>
               </View>
             </View>
 
             {/* Badges Row */}
             <View style={styles.badgesRow}>
               <View style={styles.greenBadge}>
-                <Text style={styles.greenBadgeText}>Niv. 8</Text>
+                <Text style={styles.greenBadgeText}>
+                  Niv. {formatLevelNum(minLevel)} - {formatLevelNum(maxLevel)}
+                </Text>
               </View>
 
               <View style={styles.yellowBadge}>
-                <Text style={styles.yellowBadgeText}>🏆 Compétitif</Text>
+                <Text style={styles.yellowBadgeText}>
+                  {match.match_type === 'competitive' ? '🏆 Compétitif' : '🤝 Amical'}
+                </Text>
               </View>
 
               <View style={styles.darkBadge}>
-                <Text style={styles.darkBadgeText}>1 place libre</Text>
+                <Text style={styles.darkBadgeText}>
+                  {remainingSpots <= 0
+                    ? 'Complet'
+                    : `${remainingSpots} place${remainingSpots > 1 ? 's' : ''} libre${
+                        remainingSpots > 1 ? 's' : ''
+                      }`}
+                </Text>
               </View>
             </View>
 
-            {/* Players Section */}
+            {/* Players Section (2 vs 2 Court) */}
             <Text style={styles.sectionHeader}>Joueurs</Text>
 
             <View style={styles.playersRow}>
-              {/* César */}
-              <View style={styles.playerSlot}>
-                <View style={styles.avatarCircle}>
-                  <Image
-                    source={require('../../images/avatar-cesar.png')}
-                    style={styles.playerAvatarImg}
-                  />
-                </View>
-                <View style={styles.nameContainer}>
-                  <Text style={styles.playerName}>César</Text>
-                </View>
-                <View style={styles.badgeContainer}>
-                  <View style={styles.purpleLevelBadge}>
-                    <Text style={styles.purpleLevelText}>8</Text>
-                  </View>
-                </View>
-              </View>
+              {/* Team 1: Slots 0 & 1 */}
+              {renderPlayerSlot(0)}
+              {renderPlayerSlot(1)}
 
-              {/* Léo */}
-              <View style={styles.playerSlot}>
-                <View style={[styles.avatarCircle, { backgroundColor: '#334155' }]}>
-                  <Text style={styles.avatarInitial}>L</Text>
-                </View>
-                <View style={styles.nameContainer}>
-                  <Text style={styles.playerName}>Léo</Text>
-                </View>
-                <View style={styles.badgeContainer}>
-                  <View style={styles.purpleLevelBadge}>
-                    <Text style={styles.purpleLevelText}>8</Text>
-                  </View>
-                </View>
-              </View>
-
-              {/* VS Divider vertically centered with avatar circles */}
+              {/* VS Divider */}
               <View style={styles.vsContainer}>
                 <Text style={styles.vsText}>vs</Text>
               </View>
 
-              {/* Julien - Thinner yellow ring around avatar */}
-              <View style={styles.playerSlot}>
-                <View style={[styles.avatarCircle, { borderColor: '#facc15', borderWidth: 1.8 }]}>
-                  <Image
-                    source={require('../../images/avatar-julien.png')}
-                    style={styles.playerAvatarImg}
-                  />
-                </View>
-                <View style={styles.nameContainer}>
-                  <Text style={styles.playerName}>Julien</Text>
-                </View>
-                <View style={styles.badgeContainer}>
-                  <View style={styles.purpleLevelBadge}>
-                    <Text style={styles.purpleLevelText}>8</Text>
-                  </View>
-                </View>
-              </View>
-
-              {/* Place libre - 100% vertically and horizontally aligned with the other 3 players */}
-              <View style={styles.playerSlot}>
-                <View style={styles.dashedSlot}>
-                  <Plus size={24} color="#64748b" strokeWidth={2} />
-                </View>
-                <View style={styles.nameContainer}>
-                  <Text style={styles.freeSlotText} numberOfLines={1}>Place libre</Text>
-                </View>
-                <View style={styles.badgeContainer} />
-              </View>
+              {/* Team 2: Slots 2 & 3 */}
+              {renderPlayerSlot(2)}
+              {renderPlayerSlot(3)}
             </View>
 
-            {/* Notice Card */}
+            {/* Notice Card for Level Range */}
             <View style={styles.noticeCard}>
               <View style={{ flexDirection: 'row', gap: 12 }}>
                 <Target size={20} color={colors.blue500} style={{ marginTop: 2 }} />
                 <View style={{ flex: 1 }}>
                   <Text style={styles.noticeTitle}>
-                    L'ajout automatique est réservé aux joueurs de niveau 7 à 8.
+                    L'ajout automatique est réservé aux joueurs de niveau{' '}
+                    {formatLevelNum(minLevel)} à {formatLevelNum(maxLevel)}.
                   </Text>
                   <Text style={styles.noticeSubtitle}>
                     En dehors de cet intervalle, ta demande est soumise à validation.
@@ -196,14 +294,49 @@ export const MatchDetailModal: React.FC<MatchDetailModalProps> = ({
               </View>
             </View>
 
-            {/* Leave match button */}
-            <TouchableOpacity
-              activeOpacity={0.8}
-              style={styles.leaveGameBtn}
-              onPress={onClose}
-            >
-              <Text style={styles.leaveGameBtnText}>Quitter la partie</Text>
-            </TouchableOpacity>
+            {/* Dynamic Bottom Action Button based on Julien's Status */}
+            {userStatus === 'ALREADY_JOINED' && (
+              <TouchableOpacity
+                activeOpacity={0.8}
+                style={styles.leaveGameBtn}
+                onPress={handleLeave}
+              >
+                <Text style={styles.leaveGameBtnText}>Quitter la partie</Text>
+              </TouchableOpacity>
+            )}
+
+            {userStatus === 'CAN_JOIN' && (
+              <TouchableOpacity
+                activeOpacity={0.85}
+                style={styles.joinGameBtn}
+                onPress={handleJoin}
+              >
+                <Text style={styles.joinGameBtnText}>Rejoindre la partie</Text>
+              </TouchableOpacity>
+            )}
+
+            {userStatus === 'NEEDS_REQUEST' && (
+              <TouchableOpacity
+                activeOpacity={0.85}
+                style={styles.requestGameBtn}
+                onPress={handleRequest}
+              >
+                <Text style={styles.requestGameBtnText}>Demander à rejoindre</Text>
+              </TouchableOpacity>
+            )}
+
+            {userStatus === 'REQUEST_SENT' && (
+              <View style={styles.requestSentBox}>
+                <Check size={18} color="#94a3b8" style={{ marginRight: 8 }} />
+                <Text style={styles.requestSentText}>Demande envoyée</Text>
+              </View>
+            )}
+
+            {userStatus === 'FULL' && (
+              <View style={styles.fullMatchBox}>
+                <Text style={styles.fullMatchText}>Partie complète</Text>
+              </View>
+            )}
           </View>
         </ScrollView>
       </View>
@@ -440,6 +573,61 @@ const styles = StyleSheet.create({
     marginTop: 4,
   },
   leaveGameBtn: {
+    backgroundColor: 'rgba(239, 68, 68, 0.12)',
+    borderWidth: 1,
+    borderColor: '#ef4444',
+    borderRadius: 14,
+    paddingVertical: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  leaveGameBtnText: {
+    color: '#ef4444',
+    fontSize: 16,
+    fontWeight: '700',
+  },
+  joinGameBtn: {
+    backgroundColor: '#2563eb',
+    borderRadius: 14,
+    paddingVertical: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  joinGameBtnText: {
+    color: '#ffffff',
+    fontSize: 16,
+    fontWeight: '700',
+  },
+  requestGameBtn: {
+    backgroundColor: '#1e3a8a',
+    borderWidth: 1,
+    borderColor: '#3b82f6',
+    borderRadius: 14,
+    paddingVertical: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  requestGameBtnText: {
+    color: '#60a5fa',
+    fontSize: 16,
+    fontWeight: '700',
+  },
+  requestSentBox: {
+    flexDirection: 'row',
+    backgroundColor: '#1e293b',
+    borderWidth: 1,
+    borderColor: '#475569',
+    borderRadius: 14,
+    paddingVertical: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  requestSentText: {
+    color: '#94a3b8',
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  fullMatchBox: {
     backgroundColor: '#1e293b',
     borderWidth: 1,
     borderColor: '#334155',
@@ -447,9 +635,10 @@ const styles = StyleSheet.create({
     paddingVertical: 14,
     alignItems: 'center',
     justifyContent: 'center',
+    opacity: 0.65,
   },
-  leaveGameBtnText: {
-    color: '#ffffff',
+  fullMatchText: {
+    color: '#64748b',
     fontSize: 16,
     fontWeight: '600',
   },

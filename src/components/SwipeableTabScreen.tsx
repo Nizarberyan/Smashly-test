@@ -1,11 +1,11 @@
-import React, { useRef, useEffect, createContext, useContext } from 'react';
+import React, { useRef, useEffect, createContext, useContext, useCallback, useMemo } from 'react';
 import {
   View,
   StyleSheet,
   Animated,
   Easing,
   PanResponder,
-  Dimensions,
+  useWindowDimensions,
   Platform,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -33,7 +33,7 @@ export const SwipeableTabScreen: React.FC<SwipeableTabScreenProps> = ({
   isDarkMode = true,
 }) => {
   const insets = useSafeAreaInsets();
-  const screenHeight = Dimensions.get('window').height;
+  const { height: screenHeight } = useWindowDimensions();
 
   // Translation values for slide-in and interactive downward drag
   const slideAnim = useRef(new Animated.Value(screenHeight)).current;
@@ -43,7 +43,7 @@ export const SwipeableTabScreen: React.FC<SwipeableTabScreenProps> = ({
   // Track dismissal state to avoid duplicate calls
   const isDismissing = useRef(false);
 
-  const handleDismiss = () => {
+  const handleDismiss = useCallback(() => {
     if (isDismissing.current) return;
     isDismissing.current = true;
     Animated.parallel([
@@ -61,7 +61,7 @@ export const SwipeableTabScreen: React.FC<SwipeableTabScreenProps> = ({
     ]).start(() => {
       onDismiss();
     });
-  };
+  }, [backdropOpacity, onDismiss, panY, screenHeight]);
 
   // PanResponder to track swipe-down gestures on drag handle and headers
   const panResponder = useRef(
@@ -120,10 +120,18 @@ export const SwipeableTabScreen: React.FC<SwipeableTabScreenProps> = ({
         useNativeDriver: true,
       }),
     ]).start();
-  }, [screenHeight]);
+  }, [backdropOpacity, screenHeight, slideAnim]);
+
+  const contextValue = useMemo(
+    () => ({
+      panHandlers: panResponder.panHandlers,
+      dismiss: handleDismiss,
+    }),
+    [panResponder.panHandlers, handleDismiss]
+  );
 
   return (
-    <SwipeableContext.Provider value={{ panHandlers: panResponder.panHandlers, dismiss: handleDismiss }}>
+    <SwipeableContext.Provider value={contextValue}>
       <View style={StyleSheet.absoluteFill} pointerEvents="box-none">
         {/* Dimmed backdrop revealing chat page underneath when dragged */}
         <Animated.View
@@ -152,8 +160,6 @@ export const SwipeableTabScreen: React.FC<SwipeableTabScreenProps> = ({
               transform: [{ translateY: Animated.add(slideAnim, panY) }],
             },
           ]}
-          renderToHardwareTextureAndroid={true}
-          shouldRasterizeIOS={true}
         >
           {/* Affordance Swipe-Down Drag Handle */}
           <View

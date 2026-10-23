@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -9,7 +9,7 @@ import {
   TextInput,
   Switch,
   Alert,
-  Platform,
+  ActivityIndicator,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
@@ -17,19 +17,20 @@ import {
   User,
   Bell,
   Shield,
-  Star,
-  CreditCard,
-  Pencil,
-  CheckCircle2,
+  Lock,
+  Edit2,
+  Info,
+  Check,
   ChevronDown,
-  ChevronRight,
-  Download,
   Save,
-  Moon,
-  Sun,
+  KeyRound,
+  MapPin,
 } from 'lucide-react-native';
 
-export type SettingsTab = 'general' | 'notifications' | 'privacy' | 'subscription' | 'payment';
+import { useMatches } from '../context/MatchesContext';
+import { colors } from '../theme/colors';
+
+export type SettingsTab = 'general' | 'notifications' | 'privacy';
 
 interface SettingsModalProps {
   visible: boolean;
@@ -37,53 +38,151 @@ interface SettingsModalProps {
   initialTab?: SettingsTab;
   isDarkMode?: boolean;
   onToggleDarkMode?: (value: boolean) => void;
-  onProfileUpdated?: (updated: {
-    firstName: string;
-    lastName: string;
-    email: string;
-    phone: string;
-    gender: 'Male' | 'Female';
-  }) => void;
+  onProfileUpdated?: (updated: any) => void;
 }
+
+const COUNTRY_CODES = [
+  { code: '+44', flag: '🇬🇧', label: 'UK (+44)' },
+  { code: '+33', flag: '🇫🇷', label: 'France (+33)' },
+  { code: '+34', flag: '🇪🇸', label: 'Spain (+34)' },
+  { code: '+39', flag: '🇮🇹', label: 'Italy (+39)' },
+  { code: '+32', flag: '🇧🇪', label: 'Belgium (+32)' },
+  { code: '+41', flag: '🇨🇭', label: 'Switzerland (+41)' },
+  { code: '+1', flag: '🇺🇸', label: 'USA (+1)' },
+];
 
 export const SettingsModal: React.FC<SettingsModalProps> = ({
   visible,
   onClose,
   initialTab = 'general',
   isDarkMode = true,
-  onToggleDarkMode,
   onProfileUpdated,
 }) => {
   const insets = useSafeAreaInsets();
+  const {
+    currentUser,
+    updateCurrentUser,
+  } = useMatches();
+
   const [activeTab, setActiveTab] = useState<SettingsTab>(initialTab);
+  const [saving, setSaving] = useState(false);
 
-  // Form states - General
-  const [firstName, setFirstName] = useState('John');
-  const [lastName, setLastName] = useState('Doe');
-  const [email, setEmail] = useState('email@gmail.com');
-  const [phone, setPhone] = useState('8475136528');
-  const [gender, setGender] = useState<'Male' | 'Female'>('Male');
+  // Form Fields matching screenshot & smashlyai.com
+  const [firstName, setFirstName] = useState(currentUser.first_name || '');
+  const [lastName, setLastName] = useState(currentUser.last_name || '');
+  const [email, setEmail] = useState(currentUser.email || '');
+  const [countryCode, setCountryCode] = useState('+44');
+  const [phone, setPhone] = useState(currentUser.phone ? currentUser.phone.replace(/^\+44|^\+33|^\+34|^\+39/, '') : '8475136528');
+  const [gender, setGender] = useState<'male' | 'female'>('male');
+  const [showCountryPicker, setShowCountryPicker] = useState(false);
 
-  // Form states - Notifications
+  // Notifications
   const [contactNotifications, setContactNotifications] = useState(true);
   const [lessonNotifications, setLessonNotifications] = useState(true);
-  const [promotionsPush, setPromotionsPush] = useState(false);
-  const [promotionsEmail, setPromotionsEmail] = useState(false);
+  const [matchNotifications, setMatchNotifications] = useState(true);
 
-  const handleSave = () => {
-    if (onProfileUpdated) {
-      onProfileUpdated({
-        firstName,
-        lastName,
-        email,
-        phone,
+  // Privacy
+  const [profileVisible, setProfileVisible] = useState(true);
+  const [sharePhoneWithPartners, setSharePhoneWithPartners] = useState(true);
+  const [allowDirectMessages, setAllowDirectMessages] = useState(true);
+
+  // Sync state when currentUser changes or modal reopens
+  useEffect(() => {
+    if (visible) {
+      setFirstName(currentUser.first_name || '');
+      setLastName(currentUser.last_name || '');
+      setEmail(currentUser.email || 'nizarbreyan@gmail.com');
+      
+      const rawPhone = currentUser.phone || '8475136528';
+      let foundCode = '+44';
+      let cleanPhone = rawPhone;
+      for (const item of COUNTRY_CODES) {
+        if (rawPhone.startsWith(item.code)) {
+          foundCode = item.code;
+          cleanPhone = rawPhone.replace(item.code, '');
+          break;
+        }
+      }
+      setCountryCode(foundCode);
+      setPhone(cleanPhone);
+      setGender((currentUser.gender as any) || 'male');
+    }
+  }, [visible, currentUser]);
+
+  const handleSave = async () => {
+    setSaving(true);
+    try {
+      const fullPhone = `${countryCode}${phone.replace(/\D/g, '')}`;
+      const updatedData = {
+        first_name: firstName.trim(),
+        last_name: lastName.trim(),
+        email: email.trim(),
+        phone: fullPhone,
+        gender,
+      };
+
+      await updateCurrentUser(updatedData);
+
+      onProfileUpdated?.({
+        firstName: updatedData.first_name,
+        lastName: updatedData.last_name,
+        email: updatedData.email,
+        phone: updatedData.phone,
         gender,
       });
+
+      Alert.alert('Profile Updated', 'Your profile information has been saved successfully!', [
+        { text: 'OK' },
+      ]);
+    } catch (err: any) {
+      Alert.alert('Error', err?.message || 'Unable to save profile.');
+    } finally {
+      setSaving(false);
     }
-    Alert.alert('Paramètres', 'Vos préférences ont été enregistrées avec succès !', [
-      { text: 'OK', onPress: onClose },
-    ]);
   };
+
+  const handleEditEmail = () => {
+    Alert.prompt
+      ? Alert.prompt(
+          'Edit Email',
+          'Enter your new email address. A verification link will be sent.',
+          [
+            { text: 'Cancel', style: 'cancel' },
+            {
+              text: 'Send Verification',
+              onPress: (newEmail) => {
+                if (newEmail && newEmail.includes('@')) {
+                  setEmail(newEmail);
+                  Alert.alert('Verification Sent', `Verification email sent to ${newEmail}`);
+                }
+              },
+            },
+          ],
+          'plain-text',
+          email
+        )
+      : Alert.alert('Edit Email', 'The change will require email verification. Please check your inbox.');
+  };
+
+  const handleChangePassword = () => {
+    Alert.alert(
+      'Change Password',
+      'A password reset link will be sent to your verified email address.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Send Reset Link',
+          onPress: () => {
+            Alert.alert('Email Sent', `Password reset instructions sent to ${email}`);
+          },
+        },
+      ]
+    );
+  };
+
+  const currentFlag = COUNTRY_CODES.find((c) => c.code === countryCode)?.flag || '🇬🇧';
+  const cleanDigits = phone.replace(/\D/g, '');
+  const hasValidPhone = cleanDigits.length >= 8;
 
   return (
     <Modal
@@ -92,158 +191,108 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
       transparent={false}
       onRequestClose={onClose}
     >
-      <View style={[styles.container, isDarkMode && styles.containerDark, { paddingTop: Math.max(insets.top, 16) }]}>
-        {/* Header */}
+      <View
+        style={[
+          styles.container,
+          isDarkMode ? styles.containerDark : styles.containerLight,
+          { paddingTop: Math.max(insets.top, 16) },
+        ]}
+      >
+        {/* Top Header: Settings & Close Button */}
         <View style={styles.header}>
-          <Text style={[styles.headerTitle, isDarkMode && styles.textWhite]}>Settings</Text>
+          <Text style={[styles.headerTitle, isDarkMode ? styles.textWhite : styles.textDark]}>
+            Settings
+          </Text>
           <TouchableOpacity
             activeOpacity={0.7}
-            style={[styles.closeBtn, isDarkMode && styles.closeBtnDark]}
+            style={[styles.closeBtn, isDarkMode ? styles.closeBtnDark : styles.closeBtnLight]}
             onPress={onClose}
           >
-            <X size={22} color={isDarkMode ? '#94a3b8' : '#1e293b'} strokeWidth={2.4} />
+            <X size={20} color={isDarkMode ? '#ffffff' : '#0f172a'} strokeWidth={2.4} />
           </TouchableOpacity>
         </View>
 
-        {/* Horizontal Navigation Tabs */}
-        <View style={[styles.tabBarContainer, isDarkMode && styles.tabBarContainerDark]}>
-          <ScrollView
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            contentContainerStyle={styles.tabScroll}
-          >
-            {/* General Tab */}
+        {/* Tab Pills */}
+        <View style={[styles.tabBarContainer, isDarkMode ? styles.tabBarContainerDark : styles.tabBarContainerLight]}>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.tabScroll}>
             <TouchableOpacity
               activeOpacity={0.8}
               style={[
                 styles.tabPill,
-                isDarkMode && styles.tabPillDark,
-                activeTab === 'general' && styles.tabPillActive,
+                activeTab === 'general' ? styles.tabPillActive : (isDarkMode ? styles.tabPillDark : styles.tabPillLight),
               ]}
               onPress={() => setActiveTab('general')}
             >
               <User
                 size={16}
                 color={activeTab === 'general' ? '#ffffff' : isDarkMode ? '#94a3b8' : '#334155'}
-                strokeWidth={2.2}
                 style={{ marginRight: 6 }}
               />
               <Text
                 style={[
                   styles.tabPillText,
-                  isDarkMode && styles.textSlate300,
-                  activeTab === 'general' && styles.tabPillTextActive,
+                  activeTab === 'general'
+                    ? styles.tabPillTextActive
+                    : isDarkMode
+                    ? styles.textSlate300
+                    : styles.textSlate700,
                 ]}
               >
                 General
               </Text>
             </TouchableOpacity>
 
-            {/* Notifications Tab */}
             <TouchableOpacity
               activeOpacity={0.8}
               style={[
                 styles.tabPill,
-                isDarkMode && styles.tabPillDark,
-                activeTab === 'notifications' && styles.tabPillActive,
+                activeTab === 'notifications' ? styles.tabPillActive : (isDarkMode ? styles.tabPillDark : styles.tabPillLight),
               ]}
               onPress={() => setActiveTab('notifications')}
             >
               <Bell
                 size={16}
                 color={activeTab === 'notifications' ? '#ffffff' : isDarkMode ? '#94a3b8' : '#334155'}
-                strokeWidth={2.2}
                 style={{ marginRight: 6 }}
               />
               <Text
                 style={[
                   styles.tabPillText,
-                  isDarkMode && styles.textSlate300,
-                  activeTab === 'notifications' && styles.tabPillTextActive,
+                  activeTab === 'notifications'
+                    ? styles.tabPillTextActive
+                    : isDarkMode
+                    ? styles.textSlate300
+                    : styles.textSlate700,
                 ]}
               >
                 Notifications
               </Text>
             </TouchableOpacity>
 
-            {/* Privacy Tab */}
             <TouchableOpacity
               activeOpacity={0.8}
               style={[
                 styles.tabPill,
-                isDarkMode && styles.tabPillDark,
-                activeTab === 'privacy' && styles.tabPillActive,
+                activeTab === 'privacy' ? styles.tabPillActive : (isDarkMode ? styles.tabPillDark : styles.tabPillLight),
               ]}
               onPress={() => setActiveTab('privacy')}
             >
               <Shield
                 size={16}
                 color={activeTab === 'privacy' ? '#ffffff' : isDarkMode ? '#94a3b8' : '#334155'}
-                strokeWidth={2.2}
                 style={{ marginRight: 6 }}
               />
               <Text
                 style={[
                   styles.tabPillText,
-                  isDarkMode && styles.textSlate300,
-                  activeTab === 'privacy' && styles.tabPillTextActive,
+                  activeTab === 'privacy'
+                    ? styles.tabPillTextActive
+                    : isDarkMode
+                    ? styles.textSlate300
+                    : styles.textSlate700,
                 ]}
               >
                 Privacy
-              </Text>
-            </TouchableOpacity>
-
-            {/* Subscription Tab */}
-            <TouchableOpacity
-              activeOpacity={0.8}
-              style={[
-                styles.tabPill,
-                isDarkMode && styles.tabPillDark,
-                activeTab === 'subscription' && styles.tabPillActive,
-              ]}
-              onPress={() => setActiveTab('subscription')}
-            >
-              <Star
-                size={16}
-                color={activeTab === 'subscription' ? '#ffffff' : isDarkMode ? '#94a3b8' : '#334155'}
-                strokeWidth={2.2}
-                style={{ marginRight: 6 }}
-              />
-              <Text
-                style={[
-                  styles.tabPillText,
-                  isDarkMode && styles.textSlate300,
-                  activeTab === 'subscription' && styles.tabPillTextActive,
-                ]}
-              >
-                Subscription
-              </Text>
-            </TouchableOpacity>
-
-            {/* Payment Tab */}
-            <TouchableOpacity
-              activeOpacity={0.8}
-              style={[
-                styles.tabPill,
-                isDarkMode && styles.tabPillDark,
-                activeTab === 'payment' && styles.tabPillActive,
-              ]}
-              onPress={() => setActiveTab('payment')}
-            >
-              <CreditCard
-                size={16}
-                color={activeTab === 'payment' ? '#ffffff' : isDarkMode ? '#94a3b8' : '#334155'}
-                strokeWidth={2.2}
-                style={{ marginRight: 6 }}
-              />
-              <Text
-                style={[
-                  styles.tabPillText,
-                  isDarkMode && styles.textSlate300,
-                  activeTab === 'payment' && styles.tabPillTextActive,
-                ]}
-              >
-                Payment
               </Text>
             </TouchableOpacity>
           </ScrollView>
@@ -254,400 +303,385 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
           style={styles.contentScroll}
           contentContainerStyle={{
             paddingHorizontal: 16,
-            paddingBottom: Math.max(insets.bottom, 24) + 20,
+            paddingBottom: Math.max(insets.bottom, 24) + 40,
           }}
           showsVerticalScrollIndicator={false}
-          removeClippedSubviews={Platform.OS === 'android'}
+          keyboardShouldPersistTaps="handled"
         >
-          {/* TAB 1: GENERAL */}
+          {/* TAB 1: GENERAL (Matches exact uploaded screenshot) */}
           {activeTab === 'general' && (
-            <View>
-              {/* DARK MODE TOGGLE CARD */}
-              <View style={[styles.themeCard, isDarkMode && styles.themeCardDark]}>
-                <View style={styles.themeInfoCol}>
-                  <View style={styles.themeTitleRow}>
-                    {isDarkMode ? (
-                      <Moon size={19} color="#38bdf8" strokeWidth={2.4} style={{ marginRight: 8 }} />
-                    ) : (
-                      <Sun size={19} color="#eab308" strokeWidth={2.4} style={{ marginRight: 8 }} />
-                    )}
-                    <Text style={[styles.themeTitle, isDarkMode && styles.textWhite]}>
-                      Dark Mode (Thème Sombre)
+            <View style={styles.tabContent}>
+              {/* Personal Information Header */}
+              <View style={styles.sectionHeader}>
+                <Text style={[styles.sectionTitle, isDarkMode ? styles.textWhite : styles.textDark]}>
+                  Personal Information
+                </Text>
+                <Text style={[styles.sectionSubtitle, isDarkMode ? styles.textSlate400 : styles.textSlate500]}>
+                  Manage your profile information
+                </Text>
+              </View>
+
+              {/* Card 1: Personal Information Form */}
+              <View style={[styles.cardBox, isDarkMode ? styles.cardBoxDark : styles.cardBoxLight]}>
+                {/* 2-Col First Name & Last Name */}
+                <View style={styles.nameRow}>
+                  <View style={{ flex: 1 }}>
+                    <Text style={[styles.fieldLabel, isDarkMode ? styles.textSlate300 : styles.textSlate700]}>
+                      First Name
+                    </Text>
+                    <TextInput
+                      value={firstName}
+                      onChangeText={(t) => setFirstName(t ? t.charAt(0).toUpperCase() + t.slice(1) : '')}
+                      placeholder="First name"
+                      placeholderTextColor={isDarkMode ? '#64748b' : '#94a3b8'}
+                      style={[styles.inputField, isDarkMode ? styles.inputFieldDark : styles.inputFieldLight]}
+                    />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={[styles.fieldLabel, isDarkMode ? styles.textSlate300 : styles.textSlate700]}>
+                      Last Name
+                    </Text>
+                    <TextInput
+                      value={lastName}
+                      onChangeText={(t) => setLastName(t ? t.charAt(0).toUpperCase() + t.slice(1) : '')}
+                      placeholder="Last name"
+                      placeholderTextColor={isDarkMode ? '#64748b' : '#94a3b8'}
+                      style={[styles.inputField, isDarkMode ? styles.inputFieldDark : styles.inputFieldLight]}
+                    />
+                  </View>
+                </View>
+
+                {/* Email Section */}
+                <View style={styles.formGroup}>
+                  <Text style={[styles.fieldLabel, isDarkMode ? styles.textSlate300 : styles.textSlate700]}>
+                    Email
+                  </Text>
+                  <TextInput
+                    value={email}
+                    editable={false}
+                    style={[styles.inputField, styles.disabledInput, isDarkMode ? styles.disabledDark : styles.disabledLight]}
+                  />
+                  <View style={styles.emailEditContainer}>
+                    <TouchableOpacity
+                      activeOpacity={0.7}
+                      style={[styles.outlineBtn, isDarkMode ? styles.outlineBtnDark : styles.outlineBtnLight]}
+                      onPress={handleEditEmail}
+                    >
+                      <Edit2 size={13} color={isDarkMode ? '#cbd5e1' : '#334155'} style={{ marginRight: 6 }} />
+                      <Text style={[styles.outlineBtnText, isDarkMode ? styles.textSlate300 : styles.textSlate700]}>
+                        Edit
+                      </Text>
+                    </TouchableOpacity>
+                  </View>
+                  <View style={styles.infoCaptionRow}>
+                    <Info size={13} color={isDarkMode ? '#94a3b8' : '#64748b'} style={{ marginRight: 4 }} />
+                    <Text style={[styles.infoCaptionText, isDarkMode ? styles.textSlate400 : styles.textSlate500]}>
+                      The change will require email verification
                     </Text>
                   </View>
-                  <Text style={[styles.themeSubtitle, isDarkMode && styles.textSlate400]}>
-                    Harmoniser toute l'application avec le style sombre Smashly
-                  </Text>
                 </View>
-
-                <Switch
-                  value={isDarkMode}
-                  onValueChange={(val) => onToggleDarkMode?.(val)}
-                  trackColor={{ false: '#334155', true: '#2563eb' }}
-                  thumbColor="#ffffff"
-                />
-              </View>
-
-              <Text style={[styles.sectionTitle, isDarkMode && styles.textWhite]}>Personal Information</Text>
-              <Text style={[styles.sectionSubtitle, isDarkMode && styles.textSlate400]}>Manage your profile information</Text>
-
-              <View style={[styles.formCard, isDarkMode && styles.formCardDark]}>
-                {/* First Name */}
-                <Text style={[styles.inputLabel, isDarkMode && styles.textSlate200]}>First Name</Text>
-                <TextInput
-                  style={[styles.textInput, isDarkMode && styles.textInputDark]}
-                  value={firstName}
-                  onChangeText={setFirstName}
-                  placeholder="First Name"
-                  placeholderTextColor={isDarkMode ? '#64748b' : '#94a3b8'}
-                />
-
-                {/* Last Name */}
-                <Text style={[styles.inputLabel, isDarkMode && styles.textSlate200, { marginTop: 14 }]}>Last Name</Text>
-                <TextInput
-                  style={[styles.textInput, isDarkMode && styles.textInputDark]}
-                  value={lastName}
-                  onChangeText={setLastName}
-                  placeholder="Last Name"
-                  placeholderTextColor={isDarkMode ? '#64748b' : '#94a3b8'}
-                />
-
-                {/* Email */}
-                <Text style={[styles.inputLabel, isDarkMode && styles.textSlate200, { marginTop: 14 }]}>Email</Text>
-                <TextInput
-                  style={[styles.textInput, isDarkMode && styles.textInputDark]}
-                  value={email}
-                  onChangeText={setEmail}
-                  keyboardType="email-address"
-                  autoCapitalize="none"
-                  placeholder="Email"
-                  placeholderTextColor={isDarkMode ? '#64748b' : '#94a3b8'}
-                />
-                <TouchableOpacity
-                  activeOpacity={0.7}
-                  style={[styles.editEmailBtn, isDarkMode && styles.editEmailBtnDark]}
-                  onPress={() => Alert.alert('Email', 'Un lien de confirmation vous sera envoyé.')}
-                >
-                  <Pencil size={15} color={isDarkMode ? '#94a3b8' : '#334155'} strokeWidth={2} style={{ marginRight: 6 }} />
-                  <Text style={[styles.editEmailText, isDarkMode && styles.textSlate200]}>Edit</Text>
-                </TouchableOpacity>
-                <Text style={[styles.helperText, isDarkMode && styles.textSlate400]}>
-                  ⓘ The change will require email verification
-                </Text>
 
                 {/* Phone Number */}
-                <Text style={[styles.inputLabel, isDarkMode && styles.textSlate200, { marginTop: 14 }]}>Phone Number</Text>
-                <View style={styles.phoneRow}>
-                  <TouchableOpacity activeOpacity={0.7} style={[styles.countryPicker, isDarkMode && styles.countryPickerDark]}>
-                    <Text style={styles.flagText}>🇬🇧</Text>
-                    <Text style={[styles.countryCode, isDarkMode && styles.textWhite]}>+44</Text>
-                    <ChevronDown size={14} color={isDarkMode ? '#94a3b8' : '#64748b'} style={{ marginLeft: 4 }} />
-                  </TouchableOpacity>
-                  <TextInput
-                    style={[styles.phoneInput, isDarkMode && styles.textInputDark]}
-                    value={phone}
-                    onChangeText={setPhone}
-                    keyboardType="phone-pad"
-                    placeholder="Phone Number"
-                    placeholderTextColor={isDarkMode ? '#64748b' : '#94a3b8'}
-                  />
-                </View>
-                <View style={styles.verifiedRow}>
-                  <CheckCircle2 size={16} color="#16a34a" strokeWidth={2.4} />
-                  <Text style={[styles.verifiedText, isDarkMode && styles.textSlate300]}>+44{phone}</Text>
+                <View style={styles.formGroup}>
+                  <Text style={[styles.fieldLabel, isDarkMode ? styles.textSlate300 : styles.textSlate700]}>
+                    Phone Number
+                  </Text>
+                  <View style={styles.phoneInputRow}>
+                    {/* Country Code Selector */}
+                    <TouchableOpacity
+                      activeOpacity={0.8}
+                      style={[styles.countryCodeBtn, isDarkMode ? styles.countryCodeBtnDark : styles.countryCodeBtnLight]}
+                      onPress={() => setShowCountryPicker((prev) => !prev)}
+                    >
+                      <Text style={styles.countryFlagText}>{currentFlag}</Text>
+                      <Text style={[styles.countryCodeText, isDarkMode ? styles.textWhite : styles.textDark]}>
+                        {countryCode}
+                      </Text>
+                      <ChevronDown size={14} color={isDarkMode ? '#94a3b8' : '#64748b'} />
+                    </TouchableOpacity>
+
+                    {/* Phone Input */}
+                    <TextInput
+                      value={phone}
+                      onChangeText={(t) => setPhone(t.replace(/\D/g, ''))}
+                      keyboardType="phone-pad"
+                      placeholder="8475136528"
+                      placeholderTextColor={isDarkMode ? '#64748b' : '#94a3b8'}
+                      style={[styles.inputField, { flex: 1 }, isDarkMode ? styles.inputFieldDark : styles.inputFieldLight]}
+                    />
+                  </View>
+
+                  {/* Country Dropdown options if expanded */}
+                  {showCountryPicker && (
+                    <View style={[styles.dropdownMenu, isDarkMode ? styles.dropdownMenuDark : styles.dropdownMenuLight]}>
+                      {COUNTRY_CODES.map((c) => (
+                        <TouchableOpacity
+                          key={c.code}
+                          style={styles.dropdownMenuItem}
+                          onPress={() => {
+                            setCountryCode(c.code);
+                            setShowCountryPicker(false);
+                          }}
+                        >
+                          <Text style={{ marginRight: 8, fontSize: 16 }}>{c.flag}</Text>
+                          <Text style={[styles.dropdownMenuText, isDarkMode ? styles.textWhite : styles.textDark]}>
+                            {c.label}
+                          </Text>
+                        </TouchableOpacity>
+                      ))}
+                    </View>
+                  )}
+
+                  {/* Verified Phone Status Badge */}
+                  {hasValidPhone && (
+                    <View style={styles.verifiedPhoneBadge}>
+                      <View style={styles.greenCheckCircle}>
+                        <Check size={11} color="#ffffff" strokeWidth={3} />
+                      </View>
+                      <Text style={[styles.verifiedPhoneText, isDarkMode ? styles.textWhite : styles.textDark]}>
+                        {countryCode}{cleanDigits}
+                      </Text>
+                    </View>
+                  )}
                 </View>
 
-                {/* Gender */}
-                <Text style={[styles.inputLabel, isDarkMode && styles.textSlate200, { marginTop: 16 }]}>Gender</Text>
-                <View style={[styles.genderContainer, isDarkMode && styles.genderContainerDark]}>
-                  <TouchableOpacity
-                    activeOpacity={0.8}
-                    style={[
-                      styles.genderPill,
-                      gender === 'Male' && (isDarkMode ? styles.genderPillActiveDark : styles.genderPillActive),
-                    ]}
-                    onPress={() => setGender('Male')}
-                  >
-                    <Text
+                {/* Gender Segmented Control */}
+                <View style={styles.formGroup}>
+                  <Text style={[styles.fieldLabel, isDarkMode ? styles.textSlate300 : styles.textSlate700]}>
+                    Gender
+                  </Text>
+                  <View style={[styles.segmentedContainer, isDarkMode ? styles.segmentedContainerDark : styles.segmentedContainerLight]}>
+                    <TouchableOpacity
+                      activeOpacity={0.8}
                       style={[
-                        styles.genderText,
-                        isDarkMode && styles.textSlate400,
-                        gender === 'Male' && (isDarkMode ? styles.textWhite : styles.genderTextActive),
+                        styles.segmentBtn,
+                        gender === 'male' && (isDarkMode ? styles.segmentBtnActiveDark : styles.segmentBtnActiveLight),
                       ]}
+                      onPress={() => setGender('male')}
                     >
-                      Male
-                    </Text>
-                  </TouchableOpacity>
+                      <Text
+                        style={[
+                          styles.segmentBtnText,
+                          gender === 'male'
+                            ? (isDarkMode ? styles.segmentBtnTextActiveDark : styles.segmentBtnTextActiveLight)
+                            : (isDarkMode ? styles.textSlate400 : styles.textSlate600),
+                        ]}
+                      >
+                        Male
+                      </Text>
+                    </TouchableOpacity>
 
-                  <TouchableOpacity
-                    activeOpacity={0.8}
-                    style={[
-                      styles.genderPill,
-                      gender === 'Female' && (isDarkMode ? styles.genderPillActiveDark : styles.genderPillActive),
-                    ]}
-                    onPress={() => setGender('Female')}
-                  >
-                    <Text
+                    <TouchableOpacity
+                      activeOpacity={0.8}
                       style={[
-                        styles.genderText,
-                        isDarkMode && styles.textSlate400,
-                        gender === 'Female' && (isDarkMode ? styles.textWhite : styles.genderTextActive),
+                        styles.segmentBtn,
+                        gender === 'female' && (isDarkMode ? styles.segmentBtnActiveDark : styles.segmentBtnActiveLight),
                       ]}
+                      onPress={() => setGender('female')}
                     >
-                      Female
-                    </Text>
-                  </TouchableOpacity>
+                      <Text
+                        style={[
+                          styles.segmentBtnText,
+                          gender === 'female'
+                            ? (isDarkMode ? styles.segmentBtnTextActiveDark : styles.segmentBtnTextActiveLight)
+                            : (isDarkMode ? styles.textSlate400 : styles.textSlate600),
+                        ]}
+                      >
+                        Female
+                      </Text>
+                    </TouchableOpacity>
+                  </View>
                 </View>
               </View>
 
-              {/* Save Button */}
+              {/* Primary Blue Save Button */}
               <TouchableOpacity
                 activeOpacity={0.85}
                 style={styles.saveBtn}
                 onPress={handleSave}
+                disabled={saving}
               >
-                <Save size={18} color="#ffffff" strokeWidth={2.2} style={{ marginRight: 8 }} />
-                <Text style={styles.saveBtnText}>Save</Text>
+                {saving ? (
+                  <ActivityIndicator color="#ffffff" />
+                ) : (
+                  <View style={styles.saveBtnInner}>
+                    <Save size={16} color="#ffffff" style={{ marginRight: 8 }} />
+                    <Text style={styles.saveBtnText}>Save</Text>
+                  </View>
+                )}
               </TouchableOpacity>
+
+              {/* Card 2: Password */}
+              <View style={[styles.cardBox, isDarkMode ? styles.cardBoxDark : styles.cardBoxLight]}>
+                <View style={styles.cardHeaderRow}>
+                  <Lock size={18} color={isDarkMode ? '#ffffff' : '#0f172a'} style={{ marginRight: 8 }} />
+                  <Text style={[styles.cardTitle, isDarkMode ? styles.textWhite : styles.textDark]}>
+                    Password
+                  </Text>
+                </View>
+
+                <View style={styles.centerButtonWrapper}>
+                  <TouchableOpacity
+                    activeOpacity={0.7}
+                    style={[styles.outlineBtnWide, isDarkMode ? styles.outlineBtnDark : styles.outlineBtnLight]}
+                    onPress={handleChangePassword}
+                  >
+                    <Lock size={14} color={isDarkMode ? '#cbd5e1' : '#334155'} style={{ marginRight: 8 }} />
+                    <Text style={[styles.outlineBtnWideText, isDarkMode ? styles.textSlate200 : styles.textSlate800]}>
+                      Change Password
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+
+              {/* Card 3: Search Area */}
+              <View style={[styles.cardBox, isDarkMode ? styles.cardBoxDark : styles.cardBoxLight]}>
+                <View style={styles.cardHeaderRow}>
+                  <MapPin size={18} color={isDarkMode ? '#ffffff' : '#0f172a'} style={{ marginRight: 8 }} />
+                  <Text style={[styles.cardTitle, isDarkMode ? styles.textWhite : styles.textDark]}>
+                    Search Area
+                  </Text>
+                </View>
+
+                <View style={[styles.lockedFeatureBox, isDarkMode ? styles.lockedFeatureDark : styles.lockedFeatureLight]}>
+                  <View style={{ flex: 1, marginRight: 10 }}>
+                    <Text style={[styles.lockedFeatureTitle, isDarkMode ? styles.textWhite : styles.textSlate800]}>
+                      Customise your search distance
+                    </Text>
+                    <Text style={[styles.lockedFeatureSubtitle, isDarkMode ? styles.textSlate400 : styles.textSlate500]}>
+                      Available with a higher subscription
+                    </Text>
+                  </View>
+                  <Lock size={18} color={isDarkMode ? '#94a3b8' : '#64748b'} />
+                </View>
+              </View>
             </View>
           )}
 
           {/* TAB 2: NOTIFICATIONS */}
           {activeTab === 'notifications' && (
-            <View>
-              <Text style={[styles.sectionTitle, isDarkMode && styles.textWhite]}>Notifications</Text>
-              <Text style={[styles.sectionSubtitle, isDarkMode && styles.textSlate400]}>
-                Manage your notification preferences
-              </Text>
-
-              {/* Card 1: Contact notifications */}
-              <View style={[styles.notifCard, isDarkMode && styles.notifCardDark]}>
-                <View style={styles.notifTextCol}>
-                  <Text style={[styles.notifTitle, isDarkMode && styles.textWhite]}>
-                    Contact notifications
-                  </Text>
-                  <Text style={[styles.notifSub, isDarkMode && styles.textSlate400]}>
-                    Receive notifications when someone contacts you
-                  </Text>
-                </View>
-                <Switch
-                  value={contactNotifications}
-                  onValueChange={setContactNotifications}
-                  trackColor={{ false: isDarkMode ? '#334155' : '#cbd5e1', true: '#2563eb' }}
-                  thumbColor="#ffffff"
-                />
-              </View>
-
-              {/* Card 2: Lesson confirmation/cancellation */}
-              <View style={[styles.notifCard, isDarkMode && styles.notifCardDark]}>
-                <View style={styles.notifTextCol}>
-                  <Text style={[styles.notifTitle, isDarkMode && styles.textWhite]}>
-                    Lesson confirmation/cancellation
-                  </Text>
-                  <Text style={[styles.notifSub, isDarkMode && styles.textSlate400]}>
-                    Receive alerts for your booked lessons
-                  </Text>
-                </View>
-                <Switch
-                  value={lessonNotifications}
-                  onValueChange={setLessonNotifications}
-                  trackColor={{ false: isDarkMode ? '#334155' : '#cbd5e1', true: '#2563eb' }}
-                  thumbColor="#ffffff"
-                />
-              </View>
-
-              {/* Card 3: Commercial communications */}
-              <View style={[styles.notifCardMulti, isDarkMode && styles.notifCardDark]}>
-                <Text style={[styles.notifTitle, isDarkMode && styles.textWhite]}>
-                  Commercial communications
+            <View style={styles.tabContent}>
+              <View style={styles.sectionHeader}>
+                <Text style={[styles.sectionTitle, isDarkMode ? styles.textWhite : styles.textDark]}>
+                  Notifications
                 </Text>
-                <View style={styles.subSwitchRow}>
-                  <Text style={[styles.subSwitchLabel, isDarkMode && styles.textSlate200]}>
-                    Promotions via Push
-                  </Text>
+                <Text style={[styles.sectionSubtitle, isDarkMode ? styles.textSlate400 : styles.textSlate500]}>
+                  Manage your notification preferences
+                </Text>
+              </View>
+
+              <View style={[styles.cardBox, isDarkMode ? styles.cardBoxDark : styles.cardBoxLight]}>
+                <View style={styles.settingToggleItem}>
+                  <View style={{ flex: 1, marginRight: 10 }}>
+                    <Text style={[styles.toggleTitle, isDarkMode ? styles.textWhite : styles.textDark]}>
+                      Contact notifications
+                    </Text>
+                    <Text style={[styles.toggleDesc, isDarkMode ? styles.textSlate400 : styles.textSlate500]}>
+                      Receive notifications when someone contacts you
+                    </Text>
+                  </View>
                   <Switch
-                    value={promotionsPush}
-                    onValueChange={setPromotionsPush}
-                    trackColor={{ false: isDarkMode ? '#334155' : '#cbd5e1', true: '#2563eb' }}
-                    thumbColor="#ffffff"
+                    value={contactNotifications}
+                    onValueChange={setContactNotifications}
+                    trackColor={{ false: '#334155', true: '#2563eb' }}
                   />
                 </View>
-                <View style={[styles.subDivider, isDarkMode && styles.subDividerDark]} />
-                <View style={styles.subSwitchRow}>
-                  <Text style={[styles.subSwitchLabel, isDarkMode && styles.textSlate200]}>
-                    Promotions via Email
-                  </Text>
+
+                <View style={styles.settingToggleItem}>
+                  <View style={{ flex: 1, marginRight: 10 }}>
+                    <Text style={[styles.toggleTitle, isDarkMode ? styles.textWhite : styles.textDark]}>
+                      Lesson confirmation/cancellation
+                    </Text>
+                    <Text style={[styles.toggleDesc, isDarkMode ? styles.textSlate400 : styles.textSlate500]}>
+                      Receive alerts for your lesson bookings
+                    </Text>
+                  </View>
                   <Switch
-                    value={promotionsEmail}
-                    onValueChange={setPromotionsEmail}
-                    trackColor={{ false: isDarkMode ? '#334155' : '#cbd5e1', true: '#2563eb' }}
-                    thumbColor="#ffffff"
+                    value={lessonNotifications}
+                    onValueChange={setLessonNotifications}
+                    trackColor={{ false: '#334155', true: '#2563eb' }}
+                  />
+                </View>
+
+                <View style={[styles.settingToggleItem, { borderBottomWidth: 0 }]}>
+                  <View style={{ flex: 1, marginRight: 10 }}>
+                    <Text style={[styles.toggleTitle, isDarkMode ? styles.textWhite : styles.textDark]}>
+                      Match notifications
+                    </Text>
+                    <Text style={[styles.toggleDesc, isDarkMode ? styles.textSlate400 : styles.textSlate500]}>
+                      Receive alerts when an open match near you needs players
+                    </Text>
+                  </View>
+                  <Switch
+                    value={matchNotifications}
+                    onValueChange={setMatchNotifications}
+                    trackColor={{ false: '#334155', true: '#2563eb' }}
                   />
                 </View>
               </View>
-
-              {/* Save Button */}
-              <TouchableOpacity
-                activeOpacity={0.85}
-                style={styles.saveBtn}
-                onPress={handleSave}
-              >
-                <Save size={18} color="#ffffff" strokeWidth={2.2} style={{ marginRight: 8 }} />
-                <Text style={styles.saveBtnText}>Save</Text>
-              </TouchableOpacity>
             </View>
           )}
 
           {/* TAB 3: PRIVACY */}
           {activeTab === 'privacy' && (
-            <View>
-              <Text style={[styles.sectionTitle, isDarkMode && styles.textWhite]}>Privacy</Text>
-              <Text style={[styles.sectionSubtitle, isDarkMode && styles.textSlate400]}>
-                Your data and your privacy
-              </Text>
-
-              {/* Card 1: Your data is protected */}
-              <View style={[styles.protectedCard, isDarkMode && styles.protectedCardDark]}>
-                <View style={styles.protectedHeader}>
-                  <Shield size={20} color="#2563eb" strokeWidth={2.4} style={{ marginRight: 8 }} />
-                  <Text style={[styles.protectedTitle, isDarkMode && styles.textWhite]}>
-                    Your data is protected
-                  </Text>
-                </View>
-
-                <View style={styles.bulletList}>
-                  <View style={styles.bulletItem}>
-                    <Text style={styles.bulletDot}>•</Text>
-                    <Text style={[styles.bulletText, isDarkMode && styles.textSlate300]}>
-                      Only accepted contacts can see your private information (phone, name, profile photo)
-                    </Text>
-                  </View>
-
-                  <View style={styles.bulletItem}>
-                    <Text style={styles.bulletDot}>•</Text>
-                    <Text style={[styles.bulletText, isDarkMode && styles.textSlate300]}>
-                      Only players of a similar level (±1 level) can contact you
-                    </Text>
-                  </View>
-
-                  <View style={styles.bulletItem}>
-                    <Text style={styles.bulletDot}>•</Text>
-                    <Text style={[styles.bulletText, isDarkMode && styles.textSlate300]}>
-                      You control who enters your network by accepting or declining requests
-                    </Text>
-                  </View>
-                </View>
+            <View style={styles.tabContent}>
+              <View style={styles.sectionHeader}>
+                <Text style={[styles.sectionTitle, isDarkMode ? styles.textWhite : styles.textDark]}>
+                  Privacy
+                </Text>
+                <Text style={[styles.sectionSubtitle, isDarkMode ? styles.textSlate400 : styles.textSlate500]}>
+                  Manage your privacy and visibility settings
+                </Text>
               </View>
 
-              {/* Card 2: Download my data */}
-              <TouchableOpacity
-                activeOpacity={0.75}
-                style={[styles.actionCard, isDarkMode && styles.actionCardDark]}
-                onPress={() =>
-                  Alert.alert('GDPR Export', 'Votre export de données vous sera envoyé par email.')
-                }
-              >
-                <View style={{ flex: 1 }}>
-                  <Text style={[styles.actionCardTitle, isDarkMode && styles.textWhite]}>
-                    Download my data
-                  </Text>
-                  <Text style={[styles.actionCardSub, isDarkMode && styles.textSlate400]}>
-                    Export of your personal data (GDPR)
-                  </Text>
-                </View>
-                <Download size={20} color={isDarkMode ? '#94a3b8' : '#64748b'} strokeWidth={2} />
-              </TouchableOpacity>
-
-              {/* Card 3: Privacy Policy */}
-              <TouchableOpacity
-                activeOpacity={0.75}
-                style={[styles.actionCard, isDarkMode && styles.actionCardDark]}
-                onPress={() =>
-                  Alert.alert('Politique de confidentialité', 'Ouverture de la politique de confidentialité Smashly.')
-                }
-              >
-                <View style={{ flex: 1 }}>
-                  <Text style={[styles.actionCardTitle, isDarkMode && styles.textWhite]}>
-                    Privacy Policy
-                  </Text>
-                  <Text style={[styles.actionCardSub, isDarkMode && styles.textSlate400]}>
-                    How we protect your data (GDPR)
-                  </Text>
-                </View>
-                <ChevronRight size={20} color={isDarkMode ? '#94a3b8' : '#64748b'} strokeWidth={2} />
-              </TouchableOpacity>
-            </View>
-          )}
-
-          {/* TAB 4: SUBSCRIPTION */}
-          {activeTab === 'subscription' && (
-            <View>
-              <Text style={[styles.sectionTitle, isDarkMode && styles.textWhite]}>Subscription</Text>
-              <Text style={[styles.sectionSubtitle, isDarkMode && styles.textSlate400]}>
-                Manage your Smashly pass and membership
-              </Text>
-
-              <View style={[styles.formCard, isDarkMode && styles.formCardDark]}>
-                <View style={styles.subscriptionBadgeRow}>
-                  <View style={[styles.bronzeBadge, isDarkMode && styles.bronzeBadgeDark]}>
-                    <Text style={[styles.bronzeBadgeText, isDarkMode && styles.bronzeBadgeTextDark]}>
-                      Level 1 Member
+              <View style={[styles.cardBox, isDarkMode ? styles.cardBoxDark : styles.cardBoxLight]}>
+                <View style={styles.settingToggleItem}>
+                  <View style={{ flex: 1, marginRight: 10 }}>
+                    <Text style={[styles.toggleTitle, isDarkMode ? styles.textWhite : styles.textDark]}>
+                      Profile Visibility
+                    </Text>
+                    <Text style={[styles.toggleDesc, isDarkMode ? styles.textSlate400 : styles.textSlate500]}>
+                      Allow padel players in your area to view your profile and level
                     </Text>
                   </View>
-                  <Text style={[styles.planCost, isDarkMode && styles.textWhite]}>Free</Text>
+                  <Switch
+                    value={profileVisible}
+                    onValueChange={setProfileVisible}
+                    trackColor={{ false: '#334155', true: '#2563eb' }}
+                  />
                 </View>
-                <Text style={[styles.subscriptionTitle, isDarkMode && styles.textWhite]}>
-                  Smashly Community Pass
-                </Text>
-                <Text style={[styles.subscriptionDesc, isDarkMode && styles.textSlate400]}>
-                  Accès à la recherche de partenaires, aux parties ouvertes et à l'assistant padel IA.
-                </Text>
 
-                <TouchableOpacity
-                  activeOpacity={0.85}
-                  style={styles.upgradeBtn}
-                  onPress={() => Alert.alert('Smashly Pro', 'Bientôt disponible !')}
-                >
-                  <Star size={16} color="#ffffff" strokeWidth={2.4} style={{ marginRight: 6 }} />
-                  <Text style={styles.upgradeBtnText}>Passer à Smashly Pro</Text>
-                </TouchableOpacity>
-              </View>
-            </View>
-          )}
-
-          {/* TAB 5: PAYMENT */}
-          {activeTab === 'payment' && (
-            <View>
-              <Text style={[styles.sectionTitle, isDarkMode && styles.textWhite]}>Payment</Text>
-              <Text style={[styles.sectionSubtitle, isDarkMode && styles.textSlate400]}>
-                Payment methods and billing details
-              </Text>
-
-              <View style={[styles.formCard, isDarkMode && styles.formCardDark]}>
-                <Text style={[styles.inputLabel, isDarkMode && styles.textSlate200]}>
-                  Saved Payment Methods
-                </Text>
-                <View style={[styles.actionCard, isDarkMode && styles.actionCardDark]}>
-                  <CreditCard size={20} color="#2563eb" style={{ marginRight: 10 }} />
-                  <View style={{ flex: 1 }}>
-                    <Text style={[styles.actionCardTitle, isDarkMode && styles.textWhite]}>
-                      •••• •••• •••• 4242
+                <View style={styles.settingToggleItem}>
+                  <View style={{ flex: 1, marginRight: 10 }}>
+                    <Text style={[styles.toggleTitle, isDarkMode ? styles.textWhite : styles.textDark]}>
+                      Share Phone with Confirmed Partners
                     </Text>
-                    <Text style={[styles.actionCardSub, isDarkMode && styles.textSlate400]}>
-                      Expires 12/28
+                    <Text style={[styles.toggleDesc, isDarkMode ? styles.textSlate400 : styles.textSlate500]}>
+                      Only players in the same confirmed match can view your phone number
                     </Text>
                   </View>
+                  <Switch
+                    value={sharePhoneWithPartners}
+                    onValueChange={setSharePhoneWithPartners}
+                    trackColor={{ false: '#334155', true: '#2563eb' }}
+                  />
                 </View>
 
-                <TouchableOpacity
-                  activeOpacity={0.7}
-                  style={[styles.editEmailBtn, isDarkMode && styles.editEmailBtnDark, { marginTop: 14 }]}
-                  onPress={() => Alert.alert('Ajouter une carte', 'Module de paiement sécurisé.')}
-                >
-                  <Text style={[styles.editEmailText, isDarkMode && styles.textSlate200]}>
-                    + Add payment method
-                  </Text>
-                </TouchableOpacity>
+                <View style={[styles.settingToggleItem, { borderBottomWidth: 0 }]}>
+                  <View style={{ flex: 1, marginRight: 10 }}>
+                    <Text style={[styles.toggleTitle, isDarkMode ? styles.textWhite : styles.textDark]}>
+                      Allow Direct Messages
+                    </Text>
+                    <Text style={[styles.toggleDesc, isDarkMode ? styles.textSlate400 : styles.textSlate500]}>
+                      Receive game invitations and chat messages from community members
+                    </Text>
+                  </View>
+                  <Switch
+                    value={allowDirectMessages}
+                    onValueChange={setAllowDirectMessages}
+                    trackColor={{ false: '#334155', true: '#2563eb' }}
+                  />
+                </View>
               </View>
             </View>
           )}
@@ -660,389 +694,30 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
 const styles = StyleSheet.create({
   container: {
     flex: 1,
+  },
+  containerDark: {
+    backgroundColor: '#0a0f1d',
+  },
+  containerLight: {
     backgroundColor: '#f8fafc',
   },
   header: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    paddingHorizontal: 18,
-    paddingBottom: 14,
+    paddingHorizontal: 20,
+    paddingBottom: 12,
   },
   headerTitle: {
     fontSize: 22,
     fontWeight: '800',
-    color: '#0f172a',
-    letterSpacing: -0.3,
-  },
-  closeBtn: {
-    padding: 6,
-  },
-  tabBarContainer: {
-    borderBottomWidth: 1,
-    borderBottomColor: '#e2e8f0',
-    paddingBottom: 12,
-  },
-  tabScroll: {
-    paddingHorizontal: 16,
-    gap: 8,
-  },
-  tabPill: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#ffffff',
-    borderColor: '#e2e8f0',
-    borderWidth: 1,
-    borderRadius: 12,
-    paddingHorizontal: 14,
-    paddingVertical: 9,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.05,
-    shadowRadius: 2,
-    elevation: 1,
-  },
-  tabPillActive: {
-    backgroundColor: '#2563eb',
-    borderColor: '#2563eb',
-    shadowColor: '#2563eb',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.25,
-    shadowRadius: 6,
-    elevation: 3,
-  },
-  tabPillText: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#334155',
-  },
-  tabPillTextActive: {
-    color: '#ffffff',
-  },
-  contentScroll: {
-    flex: 1,
-    paddingTop: 16,
-  },
-  sectionTitle: {
-    fontSize: 20,
-    fontWeight: '800',
-    color: '#0f172a',
-    letterSpacing: -0.2,
-  },
-  sectionSubtitle: {
-    fontSize: 13.5,
-    color: '#64748b',
-    marginTop: 2,
-    marginBottom: 16,
-  },
-  formCard: {
-    backgroundColor: '#ffffff',
-    borderRadius: 18,
-    borderWidth: 1,
-    borderColor: '#e2e8f0',
-    padding: 16,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.04,
-    shadowRadius: 6,
-    elevation: 2,
-  },
-  inputLabel: {
-    fontSize: 13,
-    fontWeight: '600',
-    color: '#1e293b',
-    marginBottom: 6,
-  },
-  textInput: {
-    backgroundColor: '#ffffff',
-    borderWidth: 1,
-    borderColor: '#cbd5e1',
-    borderRadius: 12,
-    paddingHorizontal: 14,
-    paddingVertical: Platform.OS === 'ios' ? 12 : 9,
-    fontSize: 15,
-    color: '#0f172a',
-  },
-  editEmailBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: '#ffffff',
-    borderWidth: 1,
-    borderColor: '#cbd5e1',
-    borderRadius: 10,
-    paddingVertical: 9,
-    marginTop: 8,
-  },
-  editEmailText: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#334155',
-  },
-  helperText: {
-    fontSize: 12,
-    color: '#64748b',
-    marginTop: 6,
-  },
-  phoneRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  countryPicker: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#ffffff',
-    borderWidth: 1,
-    borderColor: '#cbd5e1',
-    borderRadius: 12,
-    paddingHorizontal: 10,
-    paddingVertical: Platform.OS === 'ios' ? 12 : 9,
-    marginRight: 10,
-  },
-  flagText: {
-    fontSize: 16,
-    marginRight: 4,
-  },
-  countryCode: {
-    fontSize: 14.5,
-    fontWeight: '600',
-    color: '#0f172a',
-  },
-  phoneInput: {
-    flex: 1,
-    backgroundColor: '#ffffff',
-    borderWidth: 1,
-    borderColor: '#cbd5e1',
-    borderRadius: 12,
-    paddingHorizontal: 14,
-    paddingVertical: Platform.OS === 'ios' ? 12 : 9,
-    fontSize: 15,
-    color: '#0f172a',
-  },
-  verifiedRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginTop: 8,
-  },
-  verifiedText: {
-    fontSize: 13,
-    fontWeight: '700',
-    color: '#0f172a',
-    marginLeft: 6,
-  },
-  genderContainer: {
-    flexDirection: 'row',
-    backgroundColor: '#f1f5f9',
-    borderRadius: 12,
-    padding: 3,
-  },
-  genderPill: {
-    flex: 1,
-    paddingVertical: 10,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderRadius: 9,
-  },
-  genderPillActive: {
-    backgroundColor: '#ffffff',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.08,
-    shadowRadius: 3,
-    elevation: 2,
-  },
-  genderText: {
-    fontSize: 14,
-    fontWeight: '500',
-    color: '#64748b',
-  },
-  genderTextActive: {
-    fontWeight: '700',
-    color: '#0f172a',
-  },
-  saveBtn: {
-    backgroundColor: '#2563eb',
-    borderRadius: 14,
-    paddingVertical: 14,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginTop: 18,
-    shadowColor: '#2563eb',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
-    elevation: 4,
-  },
-  saveBtnText: {
-    color: '#ffffff',
-    fontSize: 16,
-    fontWeight: '700',
-  },
-  notifCard: {
-    backgroundColor: '#ffffff',
-    borderRadius: 16,
-    borderWidth: 1,
-    borderColor: '#e2e8f0',
-    padding: 16,
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 12,
-  },
-  notifTextCol: {
-    flex: 1,
-    paddingRight: 12,
-  },
-  notifTitle: {
-    fontSize: 15,
-    fontWeight: '700',
-    color: '#0f172a',
-  },
-  notifSub: {
-    fontSize: 12.5,
-    color: '#64748b',
-    marginTop: 2,
-    lineHeight: 17,
-  },
-  notifCardMulti: {
-    backgroundColor: '#ffffff',
-    borderRadius: 16,
-    borderWidth: 1,
-    borderColor: '#e2e8f0',
-    padding: 16,
-    marginBottom: 12,
-  },
-  subSwitchRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginTop: 12,
-  },
-  subSwitchLabel: {
-    fontSize: 14,
-    fontWeight: '500',
-    color: '#334155',
-  },
-  subDivider: {
-    height: 1,
-    backgroundColor: '#f1f5f9',
-    marginVertical: 10,
-  },
-  protectedCard: {
-    backgroundColor: '#eff6ff',
-    borderWidth: 1,
-    borderColor: '#bfdbfe',
-    borderRadius: 18,
-    padding: 16,
-    marginBottom: 14,
-  },
-  protectedHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 10,
-  },
-  protectedTitle: {
-    fontSize: 15.5,
-    fontWeight: '700',
-    color: '#1e293b',
-  },
-  bulletList: {
-    gap: 8,
-  },
-  bulletItem: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-  },
-  bulletDot: {
-    fontSize: 14,
-    color: '#2563eb',
-    marginRight: 6,
-    lineHeight: 18,
-  },
-  bulletText: {
-    flex: 1,
-    fontSize: 12.5,
-    color: '#334155',
-    lineHeight: 18,
-  },
-  actionCard: {
-    backgroundColor: '#ffffff',
-    borderRadius: 16,
-    borderWidth: 1,
-    borderColor: '#e2e8f0',
-    padding: 16,
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 12,
-  },
-  actionCardTitle: {
-    fontSize: 15,
-    fontWeight: '700',
-    color: '#0f172a',
-  },
-  actionCardSub: {
-    fontSize: 12.5,
-    color: '#64748b',
-    marginTop: 2,
-  },
-  subscriptionBadgeRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 10,
-  },
-  bronzeBadge: {
-    backgroundColor: '#eff6ff',
-    borderColor: '#bfdbfe',
-    borderWidth: 1,
-    borderRadius: 999,
-    paddingHorizontal: 10,
-    paddingVertical: 3,
-  },
-  bronzeBadgeText: {
-    color: '#2563eb',
-    fontSize: 12,
-    fontWeight: '600',
-  },
-  planCost: {
-    fontSize: 16,
-    fontWeight: '800',
-    color: '#0f172a',
-  },
-  subscriptionTitle: {
-    fontSize: 17,
-    fontWeight: '700',
-    color: '#0f172a',
-    marginBottom: 4,
-  },
-  subscriptionDesc: {
-    fontSize: 13,
-    color: '#64748b',
-    lineHeight: 18,
-    marginBottom: 14,
-  },
-  upgradeBtn: {
-    backgroundColor: '#2563eb',
-    borderRadius: 12,
-    paddingVertical: 12,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  upgradeBtnText: {
-    color: '#ffffff',
-    fontSize: 14.5,
-    fontWeight: '700',
-  },
-
-  // DARK MODE & THEME CARD STYLES
-  containerDark: {
-    backgroundColor: '#0a0f1d',
+    letterSpacing: -0.4,
   },
   textWhite: {
     color: '#ffffff',
+  },
+  textDark: {
+    color: '#0f172a',
   },
   textSlate200: {
     color: '#e2e8f0',
@@ -1053,109 +728,383 @@ const styles = StyleSheet.create({
   textSlate400: {
     color: '#94a3b8',
   },
+  textSlate500: {
+    color: '#64748b',
+  },
+  textSlate600: {
+    color: '#475569',
+  },
+  textSlate700: {
+    color: '#334155',
+  },
+  textSlate800: {
+    color: '#1e293b',
+  },
+  closeBtn: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
   closeBtnDark: {
-    backgroundColor: '#1e293b',
-    borderRadius: 999,
+    backgroundColor: 'rgba(255, 255, 255, 0.1)',
+  },
+  closeBtnLight: {
+    backgroundColor: '#e2e8f0',
+  },
+  tabBarContainer: {
+    paddingVertical: 8,
+    borderBottomWidth: 1,
   },
   tabBarContainerDark: {
-    borderBottomColor: '#1e293b',
+    borderBottomColor: 'rgba(255, 255, 255, 0.08)',
+    backgroundColor: '#0a0f1d',
+  },
+  tabBarContainerLight: {
+    borderBottomColor: '#e2e8f0',
+    backgroundColor: '#f8fafc',
+  },
+  tabScroll: {
+    paddingHorizontal: 16,
+    gap: 8,
+  },
+  tabPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 7,
+    paddingHorizontal: 14,
+    borderRadius: 12,
+    borderWidth: 1,
+  },
+  tabPillActive: {
+    backgroundColor: '#2563eb',
+    borderColor: '#2563eb',
   },
   tabPillDark: {
     backgroundColor: '#1e293b',
     borderColor: '#334155',
   },
-  formCardDark: {
-    backgroundColor: '#0f172a',
-    borderColor: '#1e293b',
-    shadowOpacity: 0.2,
+  tabPillLight: {
+    backgroundColor: '#ffffff',
+    borderColor: '#e2e8f0',
   },
-  textInputDark: {
+  tabPillText: {
+    fontSize: 13,
+    fontWeight: '600',
+  },
+  tabPillTextActive: {
+    color: '#ffffff',
+    fontWeight: '700',
+  },
+  contentScroll: {
+    flex: 1,
+    paddingTop: 12,
+  },
+  tabContent: {
+    gap: 14,
+  },
+  sectionHeader: {
+    marginBottom: 4,
+  },
+  sectionTitle: {
+    fontSize: 18,
+    fontWeight: '800',
+    letterSpacing: -0.2,
+  },
+  sectionSubtitle: {
+    fontSize: 12.5,
+    marginTop: 2,
+  },
+  cardBox: {
+    borderRadius: 16,
+    padding: 16,
+    borderWidth: 1,
+  },
+  cardBoxDark: {
+    backgroundColor: '#131b2e',
+    borderColor: '#232f48',
+  },
+  cardBoxLight: {
+    backgroundColor: '#ffffff',
+    borderColor: '#e2e8f0',
+  },
+  nameRow: {
+    flexDirection: 'row',
+    gap: 12,
+    marginBottom: 12,
+  },
+  formGroup: {
+    marginBottom: 12,
+  },
+  fieldLabel: {
+    fontSize: 12,
+    fontWeight: '600',
+    marginBottom: 6,
+  },
+  inputField: {
+    height: 42,
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    fontSize: 14,
+    borderWidth: 1,
+  },
+  inputFieldDark: {
     backgroundColor: '#0a0f1d',
-    borderColor: '#334155',
+    borderColor: '#2a3853',
     color: '#ffffff',
   },
-  editEmailBtnDark: {
-    backgroundColor: '#1e293b',
-    borderColor: '#334155',
+  inputFieldLight: {
+    backgroundColor: '#ffffff',
+    borderColor: '#cbd5e1',
+    color: '#0f172a',
   },
-  countryPickerDark: {
-    backgroundColor: '#1e293b',
-    borderColor: '#334155',
+  disabledInput: {
+    opacity: 0.85,
   },
-  genderContainerDark: {
-    backgroundColor: '#0a0f1d',
+  disabledDark: {
+    backgroundColor: '#0d1527',
+    borderColor: '#1e2a40',
+    color: '#94a3b8',
+  },
+  disabledLight: {
+    backgroundColor: '#f1f5f9',
+    borderColor: '#e2e8f0',
+    color: '#64748b',
+  },
+  emailEditContainer: {
+    marginTop: 8,
+    alignItems: 'flex-start',
+  },
+  outlineBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 5,
+    paddingHorizontal: 10,
+    borderRadius: 8,
     borderWidth: 1,
+  },
+  outlineBtnDark: {
+    borderColor: '#334155',
+    backgroundColor: '#1e293b',
+  },
+  outlineBtnLight: {
+    borderColor: '#cbd5e1',
+    backgroundColor: '#f8fafc',
+  },
+  outlineBtnText: {
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  infoCaptionRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 6,
+  },
+  infoCaptionText: {
+    fontSize: 11,
+  },
+  phoneInputRow: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  countryCodeBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 10,
+    height: 42,
+    borderRadius: 10,
+    borderWidth: 1,
+    gap: 6,
+  },
+  countryCodeBtnDark: {
+    backgroundColor: '#0a0f1d',
+    borderColor: '#2a3853',
+  },
+  countryCodeBtnLight: {
+    backgroundColor: '#ffffff',
+    borderColor: '#cbd5e1',
+  },
+  countryFlagText: {
+    fontSize: 16,
+  },
+  countryCodeText: {
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  dropdownMenu: {
+    borderRadius: 10,
+    borderWidth: 1,
+    marginTop: 6,
+    paddingVertical: 4,
+  },
+  dropdownMenuDark: {
+    backgroundColor: '#1e293b',
     borderColor: '#334155',
   },
-  genderPillActiveDark: {
+  dropdownMenuLight: {
+    backgroundColor: '#ffffff',
+    borderColor: '#e2e8f0',
+  },
+  dropdownMenuItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+  },
+  dropdownMenuText: {
+    fontSize: 13,
+    fontWeight: '600',
+  },
+  verifiedPhoneBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 8,
+    gap: 6,
+  },
+  greenCheckCircle: {
+    width: 18,
+    height: 18,
+    borderRadius: 9,
+    backgroundColor: '#22c55e',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  verifiedPhoneText: {
+    fontSize: 12.5,
+    fontWeight: '700',
+  },
+  segmentedContainer: {
+    flexDirection: 'row',
+    borderRadius: 10,
+    padding: 3,
+  },
+  segmentedContainerDark: {
+    backgroundColor: '#0a0f1d',
+  },
+  segmentedContainerLight: {
+    backgroundColor: '#f1f5f9',
+  },
+  segmentBtn: {
+    flex: 1,
+    paddingVertical: 8,
+    alignItems: 'center',
+    borderRadius: 8,
+  },
+  segmentBtnActiveDark: {
+    backgroundColor: '#1e293b',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.2,
+    shadowRadius: 2,
+    elevation: 2,
+  },
+  segmentBtnActiveLight: {
+    backgroundColor: '#ffffff',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.1,
+    shadowRadius: 2,
+    elevation: 2,
+  },
+  segmentBtnText: {
+    fontSize: 13,
+    fontWeight: '600',
+  },
+  segmentBtnTextActiveDark: {
+    color: '#ffffff',
+    fontWeight: '700',
+  },
+  segmentBtnTextActiveLight: {
+    color: '#0f172a',
+    fontWeight: '700',
+  },
+  saveBtn: {
     backgroundColor: '#2563eb',
+    height: 44,
+    borderRadius: 12,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginVertical: 4,
     shadowColor: '#2563eb',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.35,
-    shadowRadius: 4,
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.3,
+    shadowRadius: 6,
     elevation: 3,
   },
-  themeCard: {
+  saveBtnInner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  saveBtnText: {
+    color: '#ffffff',
+    fontSize: 14,
+    fontWeight: '700',
+  },
+  cardHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  cardTitle: {
+    fontSize: 15,
+    fontWeight: '700',
+  },
+  centerButtonWrapper: {
+    alignItems: 'center',
+  },
+  outlineBtnWide: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 9,
+    paddingHorizontal: 20,
+    borderRadius: 10,
+    borderWidth: 1,
+    width: '100%',
+  },
+  outlineBtnWideText: {
+    fontSize: 13,
+    fontWeight: '600',
+  },
+  lockedFeatureBox: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    backgroundColor: '#ffffff',
-    borderRadius: 16,
+    padding: 12,
+    borderRadius: 12,
     borderWidth: 1,
+  },
+  lockedFeatureDark: {
+    backgroundColor: '#0a0f1d',
+    borderColor: '#1e2a40',
+  },
+  lockedFeatureLight: {
+    backgroundColor: '#f8fafc',
     borderColor: '#e2e8f0',
-    padding: 16,
-    marginBottom: 20,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.05,
-    shadowRadius: 6,
-    elevation: 2,
   },
-  themeCardDark: {
-    backgroundColor: '#0f172a',
-    borderColor: '#1e293b',
+  lockedFeatureTitle: {
+    fontSize: 13,
+    fontWeight: '600',
   },
-  themeInfoCol: {
-    flex: 1,
-    paddingRight: 12,
+  lockedFeatureSubtitle: {
+    fontSize: 11,
+    marginTop: 2,
   },
-  themeTitleRow: {
+  settingToggleItem: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 4,
+    justifyContent: 'space-between',
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(255, 255, 255, 0.08)',
   },
-  themeTitle: {
-    fontSize: 15,
+  toggleTitle: {
+    fontSize: 13.5,
     fontWeight: '700',
-    color: '#0f172a',
   },
-  themeSubtitle: {
-    fontSize: 12,
-    color: '#64748b',
-    lineHeight: 16,
-  },
-  notifCardDark: {
-    backgroundColor: '#0f172a',
-    borderColor: '#1e293b',
-    shadowOpacity: 0.2,
-  },
-  subDividerDark: {
-    backgroundColor: '#1e293b',
-  },
-  protectedCardDark: {
-    backgroundColor: '#0f172a',
-    borderColor: '#1e293b',
-  },
-  actionCardDark: {
-    backgroundColor: '#0f172a',
-    borderColor: '#1e293b',
-  },
-  bronzeBadgeDark: {
-    backgroundColor: '#1e293b',
-    borderColor: '#334155',
-  },
-  bronzeBadgeTextDark: {
-    color: '#38bdf8',
+  toggleDesc: {
+    fontSize: 11.5,
+    marginTop: 2,
   },
 });
-

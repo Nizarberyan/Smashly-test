@@ -1,5 +1,5 @@
 import React, { memo } from 'react';
-import { View, StyleSheet, TouchableOpacity, Image, Platform } from 'react-native';
+import { View, StyleSheet, TouchableOpacity, Image, Text, Platform } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Users2, Map, Plus } from 'lucide-react-native';
@@ -13,12 +13,18 @@ interface BottomNavBarProps {
   activeTab: NavTab;
   onSelectTab: (tab: NavTab) => void;
   onQuickAction?: () => void;
+  avatarUrl?: string | null;
+  userInitials?: string;
+  isJulien?: boolean;
 }
 
 export const BottomNavBar: React.FC<BottomNavBarProps> = memo(({
   activeTab,
   onSelectTab,
   onQuickAction,
+  avatarUrl,
+  userInitials = 'J',
+  isJulien = true,
 }) => {
   const insets = useSafeAreaInsets();
 
@@ -31,6 +37,7 @@ export const BottomNavBar: React.FC<BottomNavBarProps> = memo(({
           paddingBottom: Math.max(insets.bottom, Platform.OS === 'ios' ? 14 : 16),
         },
       ]}
+      accessibilityRole="tablist"
     >
       <View style={styles.navBar}>
         {/* 1. Network / Community */}
@@ -38,6 +45,10 @@ export const BottomNavBar: React.FC<BottomNavBarProps> = memo(({
           activeOpacity={0.7}
           style={[styles.navButton, activeTab === 'network' && styles.activeNavButton]}
           onPress={() => onSelectTab('network')}
+          accessibilityRole="tab"
+          accessibilityLabel="Communauté et réseau"
+          accessibilityState={{ selected: activeTab === 'network' }}
+          hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
         >
           <Users2
             size={24}
@@ -52,6 +63,10 @@ export const BottomNavBar: React.FC<BottomNavBarProps> = memo(({
           activeOpacity={0.7}
           style={[styles.navButton, activeTab === 'map' && styles.activeNavButton]}
           onPress={() => onSelectTab('map')}
+          accessibilityRole="tab"
+          accessibilityLabel="Carte des clubs et joueurs"
+          accessibilityState={{ selected: activeTab === 'map' }}
+          hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
         >
           <Map
             size={24}
@@ -66,6 +81,9 @@ export const BottomNavBar: React.FC<BottomNavBarProps> = memo(({
           activeOpacity={0.85}
           style={styles.plusButtonContainer}
           onPress={onQuickAction ? onQuickAction : () => onSelectTab('welcome')}
+          accessibilityRole="button"
+          accessibilityLabel="Action rapide ou accueil Smashly"
+          hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
         >
           <LinearGradient
             colors={[colors.blue500, colors.yellow400]}
@@ -83,6 +101,10 @@ export const BottomNavBar: React.FC<BottomNavBarProps> = memo(({
           activeOpacity={0.7}
           style={[styles.navButton, activeTab === 'courts' && styles.activeNavButton]}
           onPress={() => onSelectTab('courts')}
+          accessibilityRole="tab"
+          accessibilityLabel="Parties ouvertes et réservation de pistes"
+          accessibilityState={{ selected: activeTab === 'courts' }}
+          hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
         >
           <PadelCourtIcon
             size={25}
@@ -97,6 +119,10 @@ export const BottomNavBar: React.FC<BottomNavBarProps> = memo(({
           activeOpacity={0.7}
           style={styles.profileButton}
           onPress={() => onSelectTab('profile')}
+          accessibilityRole="tab"
+          accessibilityLabel="Profil utilisateur et paramètres"
+          accessibilityState={{ selected: activeTab === 'profile' }}
+          hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
         >
           <View
             style={[
@@ -104,12 +130,25 @@ export const BottomNavBar: React.FC<BottomNavBarProps> = memo(({
               activeTab === 'profile' && styles.avatarBorderActive,
             ]}
           >
-            <Image
-              source={require('../../images/avatar-julien.png')}
-              style={styles.avatarImage}
-              resizeMode="cover"
-              fadeDuration={0}
-            />
+            {avatarUrl ? (
+              <Image
+                source={{ uri: avatarUrl }}
+                style={styles.avatarImage}
+                resizeMode="cover"
+                fadeDuration={0}
+              />
+            ) : isJulien ? (
+              <Image
+                source={require('../../images/avatar-julien.png')}
+                style={styles.avatarImage}
+                resizeMode="cover"
+                fadeDuration={0}
+              />
+            ) : (
+              <View style={styles.initialsAvatar}>
+                <Text style={styles.initialsText}>{userInitials}</Text>
+              </View>
+            )}
           </View>
           {activeTab === 'profile' && <View style={styles.activeDot} />}
         </TouchableOpacity>
@@ -149,15 +188,16 @@ const styles = StyleSheet.create({
     elevation: 10,
   },
   navButton: {
-    padding: 8,
+    padding: 6,
     alignItems: 'center',
     justifyContent: 'center',
-    minWidth: 44,
+    minWidth: 48,
+    minHeight: 48,
   },
   activeNavButton: {},
   activeDot: {
     position: 'absolute',
-    bottom: 0,
+    bottom: 2,
     width: 4,
     height: 4,
     borderRadius: 2,
@@ -169,11 +209,15 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.35,
     shadowRadius: 6,
     elevation: 6,
+    minWidth: 48,
+    minHeight: 48,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   plusGradient: {
-    width: 46,
-    height: 46,
-    borderRadius: 23,
+    width: 48,
+    height: 48,
+    borderRadius: 24,
     justifyContent: 'center',
     alignItems: 'center',
   },
@@ -181,7 +225,8 @@ const styles = StyleSheet.create({
     padding: 4,
     justifyContent: 'center',
     alignItems: 'center',
-    minWidth: 44,
+    minWidth: 48,
+    minHeight: 48,
   },
   avatarBorder: {
     width: 38,
@@ -206,5 +251,18 @@ const styles = StyleSheet.create({
     width: 38,
     height: 38,
     borderRadius: 19,
+  },
+  initialsAvatar: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    backgroundColor: '#0284c7',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  initialsText: {
+    color: '#ffffff',
+    fontSize: 13,
+    fontWeight: '800',
   },
 });

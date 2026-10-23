@@ -1,0 +1,66 @@
+{
+  "current_user": { "user_id": "me", "first_name": "Julien", "level": 7 },
+  "matches": [
+    {
+      "id": "m1",
+      "club": { "name": "Padel Collection", "city": "Meyrargues" },
+      "match_datetime": "2026-11-07T18:30:00+01:00",
+      "match_type": "competitive",
+      "distance_km": 18,
+      "max_players": 4,
+      "players": [
+        { "user_id": "u1", "first_name": "Mathieu", "level": 7, "slot": 0, "avatar_url": null },
+        { "user_id": "u2", "first_name": "Maxime", "level": 8, "slot": 1, "avatar_url": null }
+      ]
+    },
+    {
+      "id": "m2",
+      "club": { "name": "Set Club", "city": "Aix-en-Provence" },
+      "match_datetime": "2026-11-08T10:00:00+01:00",
+      "match_type": "friendly",
+      "distance_km": 9,
+      "max_players": 4,
+      "players": [
+        { "user_id": "u3", "first_name": "Lucas", "level": 4, "slot": 0, "avatar_url": null },
+        { "user_id": "u4", "first_name": "Emma", "level": 4.5, "slot": 2, "avatar_url": null },
+        { "user_id": "u5", "first_name": "Hugo", "level": 5, "slot": 3, "avatar_url": null }
+      ]
+    },
+    {
+      "id": "m3",
+      "club": { "name": "AVT", "city": "Venelles" },
+      "match_datetime": "2026-11-09T19:00:00+01:00",
+      "match_type": "friendly",
+      "distance_km": 2,
+      "max_players": 4,
+      "players": [
+        { "user_id": "u6", "first_name": "Robin", "level": 7, "slot": 0, "avatar_url": null },
+        { "user_id": "u7", "first_name": "Yoann", "level": 7, "slot": 1, "avatar_url": null },
+        { "user_id": "u8", "first_name": "Charlie", "level": 6.5, "slot": 2, "avatar_url": null },
+        { "user_id": "u9", "first_name": "César", "level": 7.5, "slot": 3, "avatar_url": null }
+      ]
+    },
+    {
+      "id": "m4",
+      "club": { "name": "Win Win Padel", "city": "Manosque" },
+      "match_datetime": "2026-11-14T17:00:00+01:00",
+      "match_type": "competitive",
+      "distance_km": 52,
+      "max_players": 4,
+      "players": [
+        { "user_id": "u10", "first_name": "Paul", "level": 6, "slot": 2, "avatar_url": null }
+      ]
+    },
+    {
+      "id": "m5",
+      "club": { "name": "Padel Collection", "city": "Meyrargues" },
+      "match_datetime": "2026-10-10T18:00:00+02:00",
+      "match_type": "friendly",
+      "distance_km": 18,
+      "max_players": 4,
+      "players": [
+        { "user_id": "u1", "first_name": "Mathieu", "level": 7, "slot": 0, "avatar_url": null }
+      ]
+    }
+  ]
+}

@@ -5,12 +5,21 @@
     "version": "1.0.0",
     "orientation": "portrait",
     "userInterfaceStyle": "dark",
+    "icon": "./Icons/icon-512.png",
     "newArchEnabled": true,
     "web": {
       "bundler": "metro"
     },
     "android": {
-      "package": "com.anonymous.smashlykittest"
+      "package": "com.anonymous.smashlykittest",
+      "adaptiveIcon": {
+        "foregroundImage": "./Icons/mipmap-xxxhdpi/ic_launcher_foreground.png",
+        "monochromeImage": "./Icons/mipmap-xxxhdpi/ic_launcher_monochrome.png",
+        "backgroundColor": "#0E76F0"
+      }
+    },
+    "ios": {
+      "bundleIdentifier": "com.anonymous.smashlykittest"
     }
   }
 }
