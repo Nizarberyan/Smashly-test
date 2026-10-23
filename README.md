@@ -152,11 +152,11 @@ L'APK sera généré dans : `android/app/build/outputs/apk/debug/app-debug.apk`.
 
 ## ⚠️ Limites Connues & Perspectives d'Évolution
 
-### Note Importante sur le Périmètre
-> **Note de l'auteur** : Avec plus de temps et une documentation d'API backend complète, l'application entière aurait été développée de bout en bout (*if given the time and proper API documentation, the entire application would have been implemented end-to-end*).
+### Note sur le Périmètre & API
+> **Note** : L'application entière aurait été développée de bout en bout avec la documentation complète de l'API (*I could have implemented the full app if I had the proper API documentation*).
 > 
-> En raison de la contrainte indicative de 6 à 8 heures et de l'absence de serveurs ou de spécifications d'API OpenAPI/REST fournies, l'accent a été mis sur :
-> 1. Une fidélité visuelle et ergonomique absolue par rapport aux maquettes et captures fournies.
+> En l'absence de spécifications d'API backend fournies pour ce test, l'accent a été mis sur :
+> 1. Une fidélité visuelle et ergonomique absolue par rapport aux maquettes et captures de référence.
 > 2. Une implémentation rigoureuse et 100% testée de la logique de matchmaking padel.
 > 3. L'intégration complète des 5 bonus demandés.
 
